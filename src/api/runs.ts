@@ -1,23 +1,70 @@
-import { isMockMode } from './client'
+import { apiFetch, fetchAllPages, getApiBaseUrl, isMockMode, tokenStore } from './client'
 import type { Run } from '../types/run'
 import { mockRunStream, mockRuns } from '../mocks/runs'
 
 export interface StartRunRequest {
-  programId: string
-  runDirectorySearch: boolean
-  runNewCrawl: boolean
-  directoryUrl?: string
-  startUrl?: string
-  peopleGoal?: number | null
-  noFixedGoal?: boolean
+  /** The school to crawl. A run covers a whole institution. */
+  schoolUrl?: string
+  schoolId?: string
+  programId?: string
+  /** The one control the user sets: a budget in dollars. */
+  maxSpendUsd?: number | null
+  forceRescan?: boolean
 }
+
+interface RunResponse {
+  id: string
+  status: string
+  stop_reason?: string | null
+  label?: string | null
+  sites_total: number
+  sites_completed: number
+  sites_skipped: number
+  sites_failed: number
+  records_found: number
+  records_new: number
+  records_changed: number
+  records_missing: number
+  spend_usd: number
+  max_spend_usd?: number | null
+  created_at: string
+  started_at?: string | null
+  finished_at?: string | null
+}
+
+const elapsed = (startedAt?: string | null, finishedAt?: string | null): number => {
+  if (!startedAt) return 0
+  const end = finishedAt ? Date.parse(finishedAt) : Date.now()
+  return Math.max(0, Math.round((end - Date.parse(startedAt)) / 1000))
+}
+
+const toRun = (raw: RunResponse): Run => ({
+  id: raw.id,
+  programId: '',
+  status: raw.status === 'stopped_at_limit' ? 'completed' : (raw.status as Run['status']),
+  startedAt: raw.started_at ?? undefined,
+  finishedAt: raw.finished_at ?? undefined,
+  elapsedSeconds: elapsed(raw.started_at, raw.finished_at),
+  counts: {
+    peopleFound: raw.records_found,
+    peopleEnriched: raw.records_found,
+    emailsFound: 0,
+    newCount: raw.records_new,
+    changedCount: raw.records_changed,
+    missingCount: raw.records_missing,
+  },
+  spendUsd: raw.spend_usd,
+  maxSpendUsd: raw.max_spend_usd ?? undefined,
+  // A run that hit its budget is finished with valid partial results, not failed.
+  stoppedAtLimit: raw.stop_reason === 'max_spend' || raw.stop_reason === 'max_records',
+})
 
 export const runsApi = {
   async startRun(payload: StartRunRequest): Promise<Run> {
     if (isMockMode()) {
       const newRun: Run = {
         id: `run-${Date.now()}`,
-        programId: payload.programId,
+        programId: payload.programId ?? '',
         status: 'running',
         stage: 'discovering',
         startedAt: new Date().toISOString(),
@@ -30,25 +77,37 @@ export const runsApi = {
           changedCount: 0,
           missingCount: 0,
         },
-        runType: payload.runNewCrawl && payload.runDirectorySearch ? 'New Crawl + Directory Search' : payload.runNewCrawl ? 'New Crawl' : 'Directory Search',
-        programUrl: payload.startUrl,
-        directoryUrl: payload.directoryUrl,
-        peopleGoal: payload.peopleGoal,
-        noFixedGoal: payload.noFixedGoal,
       }
       mockRuns[newRun.id] = newRun
       return newRun
     }
 
-    throw new Error('Backend API not connected')
+    const body = await apiFetch<RunResponse>('/runs', {
+      method: 'POST',
+      body: JSON.stringify({
+        sites: payload.schoolUrl ? [payload.schoolUrl] : [],
+        config: {
+          max_spend_usd: payload.maxSpendUsd ?? null,
+          force_rescan: payload.forceRescan ?? false,
+        },
+      }),
+    })
+    return toRun(body)
   },
 
   async getRun(id: string): Promise<Run> {
     if (isMockMode()) {
       return mockRuns[id] ?? mockRuns['run-1']
     }
+    return toRun(await apiFetch<RunResponse>(`/runs/${id}`))
+  },
 
-    throw new Error('Backend API not connected')
+  async listRuns(): Promise<Run[]> {
+    if (isMockMode()) {
+      return Object.values(mockRuns)
+    }
+    const rows = await fetchAllPages<RunResponse>('/runs', { pageSize: 50, maxPages: 4 })
+    return rows.map(toRun)
   },
 
   async cancelRun(id: string): Promise<void> {
@@ -56,20 +115,62 @@ export const runsApi = {
       const run = mockRuns[id]
       if (run) {
         run.status = 'cancelled'
-        run.stage = 'cancelled'
         run.finishedAt = new Date().toISOString()
       }
       return
     }
-
-    throw new Error('Backend API not connected')
+    await apiFetch<void>(`/runs/${id}/cancel`, { method: 'POST' })
   },
 
+  /** Per-site status. The authoritative snapshot for resyncing after a reconnect. */
+  async getRunSites(id: string) {
+    if (isMockMode()) return []
+    return fetchAllPages<Record<string, unknown>>(`/runs/${id}/sites`)
+  },
+
+  /**
+   * Live progress. EventSource cannot set an Authorization header, so the token
+   * goes in the query string — the one endpoint that accepts it that way.
+   */
   subscribeToRun(runId: string, onEvent: (event: { type: string; run?: Run }) => void) {
     if (isMockMode()) {
       return mockRunStream(runId, onEvent)
     }
 
-    return () => undefined
+    const token = tokenStore.get()
+    const source = new EventSource(
+      `${getApiBaseUrl()}/runs/${runId}/events?token=${encodeURIComponent(token ?? '')}`,
+    )
+
+    const handle = (raw: MessageEvent) => {
+      try {
+        const payload = JSON.parse(raw.data) as Record<string, unknown>
+        onEvent({ type: String(payload.type ?? 'progress'), run: payload as unknown as Run })
+      } catch {
+        /* a malformed frame should not tear down the stream */
+      }
+    }
+
+    source.onmessage = handle
+    for (const type of [
+      'heartbeat',
+      'run_progress',
+      'site_started',
+      'site_step',
+      'site_skipped',
+      'site_completed',
+      'site_failed',
+      'run_completed',
+      'run_stopped_at_limit',
+      'run_cancelled',
+    ]) {
+      source.addEventListener(type, handle as EventListener)
+    }
+
+    // The stream can end without a completion event because the server is
+    // stopped when idle. Callers fall back to the /sites snapshot.
+    source.onerror = () => source.close()
+
+    return () => source.close()
   },
 }

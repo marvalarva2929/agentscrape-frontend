@@ -13,19 +13,17 @@ export function PersonPage({
   person: Person
   onBack: () => void
 }) {
+  // Only fields the page actually stated. Nothing is inferred, so a blank
+  // simply means the institution did not publish it.
   const sourceFields = [
     ['Name', person.name],
-    ['Email', person.email || 'Not available'],
-    ['Phone', person.phone || 'Not available'],
-    ['Training Type', person.trainingType],
-    ['PGY / Year', person.year],
+    ['Email', person.email],
+    ['Role', person.trainingType ?? person.category],
+    ['Position', person.position],
+    ['Year', person.year],
     ['Specialty', person.specialty],
-    ['Track', person.track],
-    ['Department', person.department],
-    ['Role / Title', person.role],
-    ['Graduation Year', person.graduationYear],
-    ['Profile URL', person.profileUrl],
-  ].filter(([, value]) => value && value !== 'Not available') as Array<[string, string]>
+    ['Class of', person.graduationYear],
+  ].filter(([, value]) => Boolean(value)) as Array<[string, string]>
 
   const sourceSnippet = person.sourceSnippet ?? person.extractedText ?? 'No source snippet available.'
 

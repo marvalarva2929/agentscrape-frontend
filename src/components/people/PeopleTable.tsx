@@ -68,11 +68,11 @@ export function PeopleTable({
           <thead>
             <tr>
               <th>Name</th>
-              <th>Training Type</th>
-              <th>PGY / Year</th>
-              <th>Specialty / Track</th>
+              <th>Role</th>
+              <th>Position</th>
+              <th>Year</th>
+              <th>Specialty</th>
               <th>Email</th>
-              <th>Phone</th>
               <th>Status</th>
               <th>Last Verified</th>
               <th>Source</th>
@@ -80,13 +80,18 @@ export function PeopleTable({
           </thead>
           <tbody>
             {people.map((person) => (
-              <tr key={person.id} onClick={() => onOpenPerson(person.id)} className="clickable-row">
+              <tr
+                key={person.id}
+                onClick={() => onOpenPerson(person.id)}
+                className={`clickable-row${person.isMissing ? ' row-missing' : ''}`}
+              >
                 <td>{person.name}</td>
-                <td>{person.trainingType ?? '—'}</td>
+                <td className="capitalise">{person.trainingType ?? person.category ?? '—'}</td>
+                {/* The title exactly as the site printed it. */}
+                <td>{person.position ?? '—'}</td>
                 <td>{person.year ?? '—'}</td>
                 <td>{person.specialty ?? '—'}</td>
                 <td>{person.email || '—'}</td>
-                <td>{person.phone || '—'}</td>
                 <td><StatusBadge status={person.status} /></td>
                 <td>{person.lastVerified ?? '—'}</td>
                 <td>{person.source ?? '—'}</td>

@@ -434,9 +434,7 @@ function App() {
                           <td>{person.name}</td>
                           <td>{person.trainingType ?? '—'}</td>
                           <td>{person.year ?? '—'}</td>
-                          <td>{person.specialty ?? person.track ?? '—'}</td>
                           <td>{person.email || '—'}</td>
-                          <td>{person.phone || '—'}</td>
                           <td><StatusBadge status={person.status} /></td>
                           <td>{person.lastVerified ?? '—'}</td>
                           <td>{person.source ?? '—'}</td>

@@ -31,7 +31,17 @@ export interface Run {
   runType?: 'Directory Search' | 'New Crawl' | 'New Crawl + Directory Search'
   programUrl?: string
   directoryUrl?: string
-  peopleGoal?: number | null
-  noFixedGoal?: boolean
   agentActivity?: AgentActivity[]
+  /** Live spend, metered as the run happens rather than totalled at the end. */
+  spendUsd?: number
+  maxSpendUsd?: number
+  /**
+   * The run hit its budget and wound down cleanly. Partial results are valid
+   * results, so this is not a failure state.
+   */
+  stoppedAtLimit?: boolean
+  /** Set when the site was unchanged and the crawl was skipped entirely. */
+  skipped?: boolean
+  skipReason?: string
+  lastScrapedAt?: string
 }

@@ -1,4 +1,4 @@
-import { isMockMode } from './client'
+import { apiFetch, isMockMode, tokenStore } from './client'
 import { mockAuthLogin, mockAuthLogout, mockGetSessionStatus } from '../mocks/auth'
 
 export interface LoginPayload {
@@ -7,7 +7,12 @@ export interface LoginPayload {
 
 export interface AuthSession {
   authenticated: boolean
-  user?: { name: string }
+  user?: { name: string; scope?: 'client' | 'admin' }
+}
+
+interface LoginResponse extends AuthSession {
+  token: string
+  expires_at: string
 }
 
 export const authApi = {
@@ -16,7 +21,13 @@ export const authApi = {
       return mockAuthLogin(payload)
     }
 
-    throw new Error('Real auth backend not yet connected')
+    const body = await apiFetch<LoginResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      anonymous: true,
+    })
+    tokenStore.set(body.token)
+    return { authenticated: body.authenticated, user: body.user }
   },
 
   async logout(): Promise<void> {
@@ -25,7 +36,12 @@ export const authApi = {
       return
     }
 
-    throw new Error('Real auth backend not yet connected')
+    try {
+      await apiFetch<void>('/auth/logout', { method: 'POST' })
+    } finally {
+      // The token is stateless, so dropping it locally is what logs us out.
+      tokenStore.clear()
+    }
   },
 
   async getSession(): Promise<AuthSession> {
@@ -33,6 +49,21 @@ export const authApi = {
       return mockGetSessionStatus()
     }
 
-    throw new Error('Real auth backend not yet connected')
+    if (!tokenStore.get()) {
+      return { authenticated: false }
+    }
+
+    try {
+      return await apiFetch<AuthSession>('/auth/session')
+    } catch {
+      // An expired or rejected token means "show the login screen", not an error.
+      tokenStore.clear()
+      return { authenticated: false }
+    }
+  },
+
+  /** True when the current session may reach the staff-only areas. */
+  isAdmin(session: AuthSession | null): boolean {
+    return session?.user?.scope === 'admin'
   },
 }

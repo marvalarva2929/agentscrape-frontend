@@ -1,6 +1,27 @@
-import { isMockMode } from './client'
+import { apiFetch, fetchAllPages, isMockMode } from './client'
 import { mockSchools } from '../mocks/schools'
 import type { School } from '../types/school'
+
+/** The backend's school shape, which uses snake_case. */
+interface SchoolResponse {
+  id: string
+  name: string
+  location?: string | null
+  root_domain: string
+  program_count?: number
+  people_count?: number
+  last_updated?: string | null
+}
+
+const toSchool = (raw: SchoolResponse): School => ({
+  id: raw.id,
+  // Falls back to the domain so a school is never nameless in the list.
+  name: raw.name || raw.root_domain,
+  location: raw.location ?? undefined,
+  programCount: raw.program_count ?? 0,
+  peopleCount: raw.people_count ?? 0,
+  lastUpdated: raw.last_updated ?? undefined,
+})
 
 export const schoolsApi = {
   async listSchools(): Promise<School[]> {
@@ -8,7 +29,8 @@ export const schoolsApi = {
       return Promise.resolve(mockSchools)
     }
 
-    return []
+    const rows = await fetchAllPages<SchoolResponse>('/schools')
+    return rows.map(toSchool)
   },
 
   async getSchool(id: string): Promise<School> {
@@ -18,6 +40,6 @@ export const schoolsApi = {
       return school
     }
 
-    throw new Error('Backend API not connected')
+    return toSchool(await apiFetch<SchoolResponse>(`/schools/${id}`))
   },
 }

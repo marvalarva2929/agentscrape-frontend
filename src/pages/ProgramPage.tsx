@@ -112,7 +112,6 @@ export function ProgramPage({
                   <td>{person.year ?? '—'}</td>
                   <td>{person.specialty ?? '—'}</td>
                   <td>{person.email || '—'}</td>
-                  <td>{person.phone || '—'}</td>
                   <td><StatusBadge status={person.status} /></td>
                   <td>{person.lastVerified ?? '—'}</td>
                   <td>{person.source ?? '—'}</td>

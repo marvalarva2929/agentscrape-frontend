@@ -24,8 +24,6 @@ export const mockRuns: Record<string, Run> = {
     runType: 'New Crawl + Directory Search',
     programUrl: 'https://www.ttuhsc.edu/medicine/residency/internal-medicine',
     directoryUrl: 'https://www.ttuhsc.edu/medicine/directory',
-    peopleGoal: 45,
-    noFixedGoal: false,
     agentActivity: [
       { id: 'agent-1', currentPage: 'https://www.ttuhsc.edu/medicine/residency/internal-medicine', currentAction: 'Indexing program pages', stepNumber: 7, recordsFound: 23 },
       { id: 'agent-2', currentPage: 'https://www.ttuhsc.edu/medicine/directory', currentAction: 'Parsing directory records', stepNumber: 16, recordsFound: 18 },
@@ -55,8 +53,6 @@ export const mockRuns: Record<string, Run> = {
     runType: 'New Crawl + Directory Search',
     programUrl: 'https://www.ttuhsc.edu/medicine/residency/internal-medicine',
     directoryUrl: 'https://www.ttuhsc.edu/medicine/directory',
-    peopleGoal: 45,
-    noFixedGoal: false,
   },
 }
 
