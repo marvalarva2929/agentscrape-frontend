@@ -1,3 +1,8 @@
+import { useEffect, useState } from 'react'
+
+import { peopleApi } from '../api/people'
+import { SourceScreenshot } from '../components/source/SourceScreenshot'
+import type { SourceProvenance } from '../types/source'
 import type { Person } from '../types/person'
 import type { Program } from '../types/program'
 import type { School } from '../types/school'
@@ -25,7 +30,22 @@ export function PersonPage({
     ['Class of', person.graduationYear],
   ].filter(([, value]) => Boolean(value)) as Array<[string, string]>
 
-  const sourceSnippet = person.sourceSnippet ?? person.extractedText ?? 'No source snippet available.'
+  const [source, setSource] = useState<SourceProvenance | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    peopleApi
+      .getSource(person.id)
+      .then((loaded) => {
+        if (!cancelled) setSource(loaded)
+      })
+      .catch(() => {
+        // Provenance is supporting detail; the page still works without it.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [person.id])
 
   return (
     <main className="page-shell narrow-shell">
@@ -60,18 +80,28 @@ export function PersonPage({
       <section className="detail-section">
         <div className="section-title-row">
           <h3>Source of Truth</h3>
-          {person.sourceUrl ? <a href={person.sourceUrl} target="_blank" rel="noreferrer" className="primary-button small-button">Open Source</a> : null}
+          {(source?.sourceUrl ?? person.sourceUrl) ? (
+            <a
+              href={source?.sourceUrl ?? person.sourceUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="primary-button small-button"
+            >
+              Open Source
+            </a>
+          ) : null}
         </div>
 
         <div className="source-meta">
-          <div><span>Captured</span><strong>{person.capturedAt ?? person.lastVerified ?? '—'}</strong></div>
-          <div><span>Source</span><strong>{person.sourceUrl ?? '—'}</strong></div>
+          <div><span>Captured</span><strong>{formatWhen(source?.capturedAt ?? person.capturedAt)}</strong></div>
+          <div><span>Page</span><strong>{source?.pageTitle ?? '—'}</strong></div>
+          <div><span>Source</span><strong>{source?.sourceUrl ?? person.sourceUrl ?? '—'}</strong></div>
+          <div><span>Method</span><strong>{source?.extractionMethod ?? '—'}</strong></div>
         </div>
 
-        <div className="extracted-panel">
-          <strong>HTML / Extracted Snippet</strong>
-          <pre>{sourceSnippet}</pre>
-        </div>
+        {/* The screenshot replaces the old text snippet: it shows the page as
+            it looked, with boxes over the exact fields that were read. */}
+        {source ? <SourceScreenshot source={source} /> : <p className="muted">Loading source…</p>}
       </section>
 
       {person.versionHistory && person.versionHistory.length > 0 && (
@@ -104,6 +134,12 @@ export function PersonPage({
       )}
     </main>
   )
+}
+
+function formatWhen(value?: string) {
+  if (!value) return '—'
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString()
 }
 
 function StatusBadge({ status }: { status: Person['status'] }) {

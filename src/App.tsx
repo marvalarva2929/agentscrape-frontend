@@ -8,7 +8,10 @@ import { runsApi } from './api/runs'
 import { AppShell } from './components/layout/AppShell'
 import { BackendUnavailableState } from './components/common/BackendUnavailableState'
 import { LoadingState } from './components/common/LoadingState'
+import { AdminSubmissionsPage } from './pages/AdminSubmissionsPage'
 import { LoginPage } from './pages/LoginPage'
+import { PastCrawlsPage } from './pages/PastCrawlsPage'
+import { SubmitSchoolsPage } from './pages/SubmitSchoolsPage'
 import { PersonPage } from './pages/PersonPage'
 import { RunMonitorPage } from './pages/RunMonitorPage'
 import type { School } from './types/school'
@@ -16,7 +19,14 @@ import type { Program } from './types/program'
 import type { Person, PersonStatus } from './types/person'
 import type { Run } from './types/run'
 
-export type Screen = 'main' | 'person' | 'run-monitor' | 'crawl'
+export type Screen =
+  | 'main'
+  | 'person'
+  | 'run-monitor'
+  | 'crawl'
+  | 'submit'
+  | 'history'
+  | 'admin'
 
 type WizardRunType = 'directory' | 'crawl' | 'both'
 type GoalMode = 'target' | 'everyone'
@@ -44,6 +54,7 @@ const createWizardDraft = (schoolId = '', programId = ''): WizardDraft => ({
 function App() {
   const [screen, setScreen] = useState<Screen>('main')
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [schools, setSchools] = useState<School[]>([])
   const [programs, setPrograms] = useState<Program[]>([])
   const [people, setPeople] = useState<Person[]>([])
@@ -64,6 +75,7 @@ function App() {
       try {
         const session = await authApi.getSession()
         setIsAuthenticated(session.authenticated)
+        setIsAdmin(session.user?.scope === 'admin')
         if (session.authenticated) {
           const schoolList = await schoolsApi.listSchools()
           setSchools(schoolList)
@@ -321,6 +333,10 @@ function App() {
     <AppShell
       onLogout={handleLogout}
       onNavigateSchools={() => setScreen('main')}
+      onNavigateSubmit={() => setScreen('submit')}
+      onNavigateHistory={() => setScreen('history')}
+      onNavigateAdmin={() => setScreen('admin')}
+      isAdmin={isAdmin}
       onNavigateCrawl={navigateToCrawl}
       statusText="Backend online"
     >
@@ -447,6 +463,32 @@ function App() {
             </>
           )}
         </main>
+      )}
+
+      {screen === 'submit' && <SubmitSchoolsPage onBack={() => setScreen('main')} />}
+
+      {screen === 'history' && (
+        <PastCrawlsPage
+          onBack={() => setScreen('main')}
+          onOpenRun={(runId) => {
+            void runsApi.getRun(runId).then((loaded) => {
+              setRun(loaded)
+              setScreen('run-monitor')
+            })
+          }}
+        />
+      )}
+
+      {screen === 'admin' && (
+        <AdminSubmissionsPage
+          onBack={() => setScreen('main')}
+          onOpenRun={(runId) => {
+            void runsApi.getRun(runId).then((loaded) => {
+              setRun(loaded)
+              setScreen('run-monitor')
+            })
+          }}
+        />
       )}
 
       {screen === 'person' && selectedPerson && (

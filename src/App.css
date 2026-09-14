@@ -1117,3 +1117,98 @@ td {
     padding: 1.2rem 0.8rem 2rem;
   }
 }
+
+/* --- backend integration: new screens ---------------------------------- */
+
+.upload-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-top: 16px;
+}
+
+.upload-row input[type='text'],
+.upload-row input[type='number'] {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.budget-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.budget-field input {
+  width: 110px;
+}
+
+.error-banner {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #fdecea;
+  color: #8a1c13;
+  border: 1px solid #f5c2bd;
+}
+
+.muted {
+  color: #6b7280;
+}
+
+.static-card {
+  cursor: default;
+  text-align: left;
+}
+
+/* Someone who has dropped off the site: kept, but visibly de-emphasised. */
+.row-missing {
+  opacity: 0.55;
+}
+
+.row-missing td:first-child::after {
+  content: ' · no longer listed';
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.skip-notice {
+  border-left: 3px solid #2563eb;
+}
+
+.capitalise {
+  text-transform: capitalize;
+}
+
+/* Screenshot with highlight boxes over the exact fields that were read. */
+.provenance-shot {
+  position: relative;
+  overflow: auto;
+  max-height: 520px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.provenance-shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.provenance-shot .field-box {
+  position: absolute;
+  border: 2px solid #f59e0b;
+  background: rgba(245, 158, 11, 0.16);
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.login-api-field {
+  margin-top: 12px;
+  text-align: left;
+}
+
+.login-api-field input {
+  width: 100%;
+}

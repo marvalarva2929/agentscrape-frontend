@@ -1,11 +1,67 @@
 const DEFAULT_API_BASE_URL = 'http://localhost:8000/api/v1'
 const TOKEN_STORAGE_KEY = 'agentscrape.token'
+const API_BASE_STORAGE_KEY = 'agentscrape.apiBase'
 
 // Not named use* : the React hooks lint rule treats that prefix as a hook.
 const mockApiEnabled = () => import.meta.env.VITE_USE_MOCK_API === 'true'
 
+const readStored = (key: string): string | null => {
+  try {
+    return window.localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Where the API lives.
+ *
+ * Resolved at runtime, not baked in at build time, because the same static
+ * bundle on GitHub Pages has to be pointable at whichever backend is up —
+ * a laptop behind a tunnel today, a server later — without a rebuild.
+ *
+ * Order: ?api= in the URL (remembered), then a saved value, then the build-time
+ * env var, then localhost.
+ */
 export function getApiBaseUrl() {
-  return (import.meta.env.VITE_API_BASE_URL as string | undefined) || DEFAULT_API_BASE_URL
+  try {
+    const fromQuery = new URLSearchParams(window.location.search).get('api')
+    if (fromQuery) {
+      window.localStorage.setItem(API_BASE_STORAGE_KEY, fromQuery.replace(/\/$/, ''))
+    }
+  } catch {
+    /* no window during a build or test */
+  }
+
+  return (
+    readStored(API_BASE_STORAGE_KEY) ||
+    (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
+    DEFAULT_API_BASE_URL
+  )
+}
+
+export function setApiBaseUrl(url: string) {
+  try {
+    window.localStorage.setItem(API_BASE_STORAGE_KEY, url.replace(/\/$/, ''))
+  } catch {
+    /* nothing we can do */
+  }
+}
+
+/** True when an HTTPS page is trying to reach a plain-HTTP backend.
+ *
+ * Browsers block that as mixed content, and it is the most likely reason a
+ * deployed build cannot see a backend running on someone's laptop. */
+export function hasMixedContentProblem(): boolean {
+  try {
+    return (
+      window.location.protocol === 'https:' &&
+      getApiBaseUrl().startsWith('http://') &&
+      !/^https?:\/\/(localhost|127\.0\.0\.1)/.test(getApiBaseUrl())
+    )
+  } catch {
+    return false
+  }
 }
 
 /**

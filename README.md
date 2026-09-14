@@ -1,73 +1,70 @@
-# React + TypeScript + Vite
+# agentscrape-frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend for the contact-extraction platform. Browse schools, programmes and the
+people found on each institution's site, launch crawls, and review where every
+value came from.
 
-Currently, two official plugins are available:
+Built on the UI by [@Carsonshef](https://github.com/Carsonshef/frontend) and
+wired to the [agentscrape backend](https://github.com/marvalarva2929/agentscrape).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Running locally
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+cp .env.example .env.local     # points at http://localhost:8000/api/v1
+npm run dev                    # http://localhost:5173
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+The backend must be running:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cd ../agentscrape
+docker compose up -d && uv run alembic upgrade head
+uv run uvicorn agentscrape.api.main:app --port 8000
 ```
+
+Set `VITE_USE_MOCK_API=true` to run entirely on the built-in mock data with no
+backend at all.
+
+## Pointing the app at a backend
+
+The API address is resolved **at runtime**, not baked into the build, so the same
+deployed bundle can reach whichever backend is up. In order of precedence:
+
+1. `?api=https://your-backend/api/v1` in the URL (remembered afterwards)
+2. the address entered under "Change backend address" on the login screen
+3. `VITE_API_BASE_URL` at build time
+4. `http://localhost:8000/api/v1`
+
+### A note on GitHub Pages
+
+Pages is HTTPS-only. A browser on an HTTPS page **will not** connect to a backend
+on plain `http://`, so a deployed build cannot talk to a backend running on your
+laptop directly — the login screen detects this and says so. Two ways round it:
+
+- **Run everything locally** (`npm run dev`), which has no such restriction; or
+- **Expose the backend over HTTPS**, e.g. `cloudflared tunnel --url http://localhost:8000`,
+  then open the deployed site with `?api=https://<tunnel-host>/api/v1`.
+
+Whichever you use, add that origin to `CORS_ORIGINS` in the backend's `.env`.
+
+## Two passwords
+
+| Password | Grants |
+|---|---|
+| `APP_PASSWORD` | Browse schools, programmes and people; export; submit a CSV request |
+| `ADMIN_PASSWORD` | The above, plus the submitted-CSV queue and launching runs |
+
+Launching a crawl is billable, so clients request schools and staff run them.
+
+## Screens
+
+- **Schools → Programs → People** — the main navigation
+- **Person** — every field with its source page, capture time and a screenshot
+  with the exact fields highlighted
+- **Request schools** — clients upload a CSV of the schools they want
+- **Admin → Submitted CSVs** — staff review a request and launch it with a budget
+- **Past crawls** — crawls take minutes and there are no notifications, so this
+  is how you come back to a finished run
+- **Run monitor** — live progress over SSE, including the skipped state when a
+  site has not changed
