@@ -400,7 +400,7 @@ function App() {
                 <div className="summary-card"><div className="summary-label">Residents</div><div className="summary-value">{filteredPeople.filter((person) => person.trainingType === 'Resident').length}</div></div>
                 <div className="summary-card"><div className="summary-label">Fellows</div><div className="summary-value">{filteredPeople.filter((person) => person.trainingType === 'Fellow').length}</div></div>
                 <div className="summary-card"><div className="summary-label">Emails Found</div><div className="summary-value">{filteredPeople.filter((person) => person.email).length}</div></div>
-                <div className="summary-card"><div className="summary-label">Last Updated</div><div className="summary-value">{selectedProgram.lastUpdated ?? '—'}</div></div>
+                <div className="summary-card"><div className="summary-label">Last Updated</div><div className="summary-value">{formatDate(selectedProgram.lastUpdated)}</div></div>
               </div>
 
               <div className="table-panel">
@@ -431,14 +431,13 @@ function App() {
                     <thead>
                       <tr>
                         <th>Name</th>
-                        <th>Training Type</th>
-                        <th>PGY / Year</th>
-                        <th>Specialty / Track</th>
+                        <th>Role</th>
+                        <th>Position</th>
+                        <th>Year</th>
+                        <th>Specialty</th>
                         <th>Email</th>
-                        <th>Phone</th>
                         <th>Status</th>
-                        <th>Last Verified</th>
-                        <th>Source</th>
+                        <th>Last seen</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -448,12 +447,16 @@ function App() {
                           setScreen('person')
                         }} className="clickable-row">
                           <td>{person.name}</td>
-                          <td>{person.trainingType ?? '—'}</td>
+                          <td className="capitalise">
+                            {person.trainingType ?? person.category ?? '—'}
+                          </td>
+                          {/* The title exactly as the site printed it. */}
+                          <td>{person.position ?? '—'}</td>
                           <td>{person.year ?? '—'}</td>
+                          <td>{person.specialty ?? '—'}</td>
                           <td>{person.email || '—'}</td>
                           <td><StatusBadge status={person.status} /></td>
-                          <td>{person.lastVerified ?? '—'}</td>
-                          <td>{person.source ?? '—'}</td>
+                          <td>{formatDate(person.lastVerified)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -686,3 +689,10 @@ function StatusBadge({ status }: { status: Person['status'] }) {
 }
 
 export default App
+
+/** ISO timestamps from the API; the UI wants a plain date. */
+function formatDate(value?: string | null) {
+  if (!value) return '\u2014'
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString()
+}

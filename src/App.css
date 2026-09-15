@@ -1212,3 +1212,15 @@ td {
 .login-api-field input {
   width: 100%;
 }
+
+/* The login card's link sat on white with near-white text. */
+.login-card .link-button {
+  margin-top: 14px;
+  color: #2563eb;
+  font-size: 13px;
+  text-decoration: underline;
+}
+
+.login-card .link-button:hover {
+  color: #1d4ed8;
+}
