@@ -48,6 +48,29 @@ laptop directly — the login screen detects this and says so. Two ways round it
 
 Whichever you use, add that origin to `CORS_ORIGINS` in the backend's `.env`.
 
+## Deploying
+
+The live site is published from the `gh-pages` branch:
+<https://marvalarva2929.github.io/agentscrape-frontend/>
+
+```bash
+BASE_PATH=/agentscrape-frontend/ npm run build
+cp dist/index.html dist/404.html     # client-side routes
+# publish dist/ to the gh-pages branch
+```
+
+`.github/workflows/deploy.yml` automates this on every push to `main`, but
+pushing a workflow file needs the `workflow` OAuth scope. If `git push` is
+rejected with *"refusing to allow an OAuth App to create or update workflow"*,
+run:
+
+```bash
+gh auth refresh -s workflow
+```
+
+then push again and switch Pages to "GitHub Actions" under
+Settings → Pages. Until then the `gh-pages` branch is the source of truth.
+
 ## Two passwords
 
 | Password | Grants |
