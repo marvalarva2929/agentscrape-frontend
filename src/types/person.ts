@@ -26,7 +26,6 @@ export interface PersonVersion {
 
 export interface Person {
   id: string
-  programId: string
   schoolId?: string
   name: string
   email?: string

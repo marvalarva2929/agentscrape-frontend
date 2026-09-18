@@ -1,10 +1,9 @@
 import type { Person } from '../types/person'
 
 export const mockPeople: Record<string, Person[]> = {
-  'program-101': [
+  'school-1': [
     {
       id: 'person-1001',
-      programId: 'program-101',
       schoolId: 'school-1',
       name: 'Daniel Roberts',
       trainingType: 'Resident',
@@ -25,7 +24,6 @@ export const mockPeople: Record<string, Person[]> = {
     },
     {
       id: 'person-1002',
-      programId: 'program-101',
       schoolId: 'school-1',
       name: 'Maria Johnson',
       trainingType: 'Resident',
@@ -34,7 +32,7 @@ export const mockPeople: Record<string, Person[]> = {
       email: 'maria.johnson@ttuhsc.edu',
       status: 'active',
       lastVerified: '2026-09-10',
-      source: 'Program website',
+      source: 'Department website',
       graduationYear: '2026',
       sourceUrl: 'https://www.ttuhsc.edu/medicine/people/johnson',
       capturedAt: '2026-09-10',
@@ -45,7 +43,6 @@ export const mockPeople: Record<string, Person[]> = {
     },
     {
       id: 'person-1003',
-      programId: 'program-101',
       schoolId: 'school-1',
       name: 'Alicia Thompson',
       trainingType: 'Fellow',
@@ -65,7 +62,6 @@ export const mockPeople: Record<string, Person[]> = {
     },
     {
       id: 'person-1004',
-      programId: 'program-101',
       schoolId: 'school-1',
       name: 'Omar Ahmed',
       trainingType: 'Resident',
@@ -74,7 +70,7 @@ export const mockPeople: Record<string, Person[]> = {
       email: '',
       status: 'stale',
       lastVerified: '2026-08-29',
-      source: 'Program page',
+      source: 'Department page',
       graduationYear: '2029',
       sourceUrl: 'https://www.ttuhsc.edu/medicine/people/ahmed',
       capturedAt: '2026-08-29',
@@ -84,10 +80,9 @@ export const mockPeople: Record<string, Person[]> = {
       ],
     },
   ],
-  'program-201': [
+  'school-2': [
     {
       id: 'person-2001',
-      programId: 'program-201',
       schoolId: 'school-2',
       name: 'Priya Nair',
       trainingType: 'Resident',
@@ -104,10 +99,9 @@ export const mockPeople: Record<string, Person[]> = {
       versionHistory: [],
     },
   ],
-  'program-301': [
+  'school-3': [
     {
       id: 'person-3001',
-      programId: 'program-301',
       schoolId: 'school-3',
       name: 'Elena Park',
       trainingType: 'Fellow',
@@ -116,7 +110,7 @@ export const mockPeople: Record<string, Person[]> = {
       email: 'elena.park@duke.edu',
       status: 'active',
       lastVerified: '2026-09-04',
-      source: 'Program page',
+      source: 'Department page',
       graduationYear: '2028',
       sourceUrl: 'https://www.duke.edu/peds/park',
       capturedAt: '2026-09-04',

@@ -4,17 +4,14 @@ import { peopleApi } from '../api/people'
 import { SourceScreenshot } from '../components/source/SourceScreenshot'
 import type { SourceProvenance } from '../types/source'
 import type { Person } from '../types/person'
-import type { Program } from '../types/program'
 import type { School } from '../types/school'
 
 export function PersonPage({
   school,
-  program,
   person,
   onBack,
 }: {
   school?: School
-  program?: Program
   person: Person
   onBack: () => void
 }) {
@@ -51,16 +48,16 @@ export function PersonPage({
     <main className="page-shell narrow-shell">
       <div className="person-header">
         <div>
-          <div className="breadcrumb">Schools / {school?.name ?? 'School'} / {program?.name ?? 'Program'} / {person.name}</div>
+          <div className="breadcrumb">Schools / {school?.name ?? 'School'} / {person.name}</div>
           <h2>{person.name}</h2>
           <div className="subheader-meta">
             <span>{person.trainingType ?? '—'}</span>
-            <span>{program?.name ?? 'Program'}</span>
+            <span>{person.specialty ?? 'Specialty not stated'}</span>
             <span>{school?.name ?? 'School'}</span>
             <StatusBadge status={person.status} />
           </div>
         </div>
-        <button className="secondary-button" onClick={onBack}>Back to program</button>
+        <button className="secondary-button" onClick={onBack}>Back to school</button>
       </div>
 
       <section className="detail-section">

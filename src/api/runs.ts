@@ -1,12 +1,11 @@
 import { apiFetch, fetchAllPages, getApiBaseUrl, isMockMode, tokenStore } from './client'
-import type { Run } from '../types/run'
+import type { FeedItem, Run } from '../types/run'
 import { mockRunStream, mockRuns } from '../mocks/runs'
 
 export interface StartRunRequest {
   /** The school to crawl. A run covers a whole institution. */
   schoolUrl?: string
   schoolId?: string
-  programId?: string
   /** The one control the user sets: a budget in dollars. */
   maxSpendUsd?: number | null
   forceRescan?: boolean
@@ -40,7 +39,6 @@ const elapsed = (startedAt?: string | null, finishedAt?: string | null): number 
 
 const toRun = (raw: RunResponse): Run => ({
   id: raw.id,
-  programId: '',
   status: raw.status === 'stopped_at_limit' ? 'completed' : (raw.status as Run['status']),
   startedAt: raw.started_at ?? undefined,
   finishedAt: raw.finished_at ?? undefined,
@@ -64,7 +62,7 @@ export const runsApi = {
     if (isMockMode()) {
       const newRun: Run = {
         id: `run-${Date.now()}`,
-        programId: payload.programId ?? '',
+        schoolId: payload.schoolId,
         status: 'running',
         stage: 'discovering',
         startedAt: new Date().toISOString(),
@@ -131,10 +129,13 @@ export const runsApi = {
   /**
    * Live progress. EventSource cannot set an Authorization header, so the token
    * goes in the query string — the one endpoint that accepts it that way.
+   * Delivers each event's type and raw payload; `applyRunEvent` folds them in.
    */
-  subscribeToRun(runId: string, onEvent: (event: { type: string; run?: Run }) => void) {
+  subscribeToRun(runId: string, onEvent: (event: RunEvent) => void) {
     if (isMockMode()) {
-      return mockRunStream(runId, onEvent)
+      return mockRunStream(runId, (event) =>
+        onEvent({ type: event.type, payload: (event.run ?? {}) as unknown as Record<string, unknown> }),
+      )
     }
 
     const token = tokenStore.get()
@@ -145,32 +146,150 @@ export const runsApi = {
     const handle = (raw: MessageEvent) => {
       try {
         const payload = JSON.parse(raw.data) as Record<string, unknown>
-        onEvent({ type: String(payload.type ?? 'progress'), run: payload as unknown as Run })
+        onEvent({ type: String(payload.type ?? 'progress'), payload })
       } catch {
         /* a malformed frame should not tear down the stream */
       }
     }
 
     source.onmessage = handle
-    for (const type of [
-      'heartbeat',
-      'run_progress',
-      'site_started',
-      'site_step',
-      'site_skipped',
-      'site_completed',
-      'site_failed',
-      'run_completed',
-      'run_stopped_at_limit',
-      'run_cancelled',
-    ]) {
+    for (const type of RUN_EVENT_TYPES) {
       source.addEventListener(type, handle as EventListener)
     }
 
     // The stream can end without a completion event because the server is
-    // stopped when idle. Callers fall back to the /sites snapshot.
+    // stopped when idle. Callers poll getRun as the fallback.
     source.onerror = () => source.close()
 
     return () => source.close()
   },
+}
+
+export interface RunEvent {
+  type: string
+  payload: Record<string, unknown>
+}
+
+const RUN_EVENT_TYPES = [
+  'heartbeat',
+  'run_progress',
+  'site_started',
+  'site_step',
+  'site_skipped',
+  'site_completed',
+  'site_failed',
+  'run_completed',
+  'run_stopped_at_limit',
+  'run_cancelled',
+]
+
+export const TERMINAL_EVENTS = new Set(['run_completed', 'run_stopped_at_limit', 'run_cancelled'])
+const FEED_LIMIT = 200
+const STAGES = new Set(['discovering', 'directory', 'finalizing', 'complete'])
+
+const num = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined
+const str = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() ? value : undefined
+
+/** Fold one stream event into the run the monitor shows. */
+export function applyRunEvent(run: Run, event: RunEvent): Run {
+  const p = event.payload
+  const at = str(p.at) ?? new Date().toISOString()
+  const feed = run.feed ?? []
+  const push = (item: Omit<FeedItem, 'id' | 'at'>): FeedItem[] =>
+    [{ id: `${at}-${feed.length}`, at, ...item }, ...feed].slice(0, FEED_LIMIT)
+
+  switch (event.type) {
+    case 'heartbeat':
+    case 'run_progress':
+      return {
+        ...run,
+        spendUsd: num(p.spend_usd) ?? run.spendUsd,
+        status: run.status === 'queued' ? 'running' : run.status,
+      }
+    case 'site_started':
+      return {
+        ...run,
+        status: 'running',
+        stage: 'discovering',
+        feed: push({ kind: 'note', message: `Started crawling ${str(p.domain) ?? 'the school'}` }),
+      }
+    case 'site_step': {
+      const stage = str(p.stage)
+      if (stage && STAGES.has(stage)) {
+        return {
+          ...run,
+          stage: stage as Run['stage'],
+          progress: Math.max(run.progress ?? 0, num(p.progress) ?? 0),
+        }
+      }
+      const message = str(p.message)
+      if (str(p.action) === 'note') {
+        const programs = num(p.programs)
+        const coveredMatch = message?.match(/(\d+) of (\d+) programs covered/)
+        return {
+          ...run,
+          programsTotal: programs ?? (coveredMatch ? Number(coveredMatch[2]) : run.programsTotal),
+          programsCovered: coveredMatch ? Number(coveredMatch[1]) : run.programsCovered,
+          feed: message ? push({ kind: 'note', message }) : feed,
+        }
+      }
+      const records = num(p.records) ?? 0
+      const trainees = num(p.trainees) ?? 0
+      return {
+        ...run,
+        status: 'running',
+        stage: run.stage === 'discovering' || !run.stage ? 'directory' : run.stage,
+        pagesRead: (run.pagesRead ?? 0) + 1,
+        traineesFound: (run.traineesFound ?? 0) + trainees,
+        counts: {
+          ...(run.counts ?? EMPTY_COUNTS),
+          peopleFound: (run.counts?.peopleFound ?? 0) + records,
+        },
+        feed: push({
+          kind: 'page',
+          message: message ?? `Read ${str(p.url) ?? 'a page'}`,
+          url: str(p.url),
+          records,
+          trainees,
+        }),
+      }
+    }
+    case 'site_skipped':
+      return {
+        ...run,
+        skipped: true,
+        skipReason: str(p.reason),
+        feed: push({ kind: 'note', message: `Skipped: ${str(p.reason) ?? 'site unchanged since the last crawl'}` }),
+      }
+    case 'site_failed':
+      return {
+        ...run,
+        errorMessage: str(p.reason),
+        feed: push({ kind: 'error', message: `Stopped: ${str(p.reason) ?? str(p.error_code) ?? 'site failed'}` }),
+      }
+    case 'site_completed':
+      return { ...run, feed: push({ kind: 'note', message: 'Finished the site; reconciling records' }) }
+    default:
+      if (TERMINAL_EVENTS.has(event.type)) {
+        return {
+          ...run,
+          status: event.type === 'run_cancelled' ? 'cancelled' : 'completed',
+          stage: 'complete',
+          progress: 100,
+          stoppedAtLimit: event.type === 'run_stopped_at_limit',
+        }
+      }
+      return run
+  }
+}
+
+const EMPTY_COUNTS = {
+  peopleFound: 0,
+  peopleEnriched: 0,
+  emailsFound: 0,
+  newCount: 0,
+  changedCount: 0,
+  missingCount: 0,
 }

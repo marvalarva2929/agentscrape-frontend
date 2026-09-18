@@ -188,7 +188,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     Accept: 'application/json',
     ...((options.headers as Record<string, string>) ?? {}),
   }
-  // Let the browser set the boundary for multipart uploads.
+  // Let the browser set the boundary for FormData bodies.
   if (!(options.body instanceof FormData) && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json'
   }

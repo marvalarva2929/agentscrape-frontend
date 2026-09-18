@@ -15,7 +15,7 @@ const DATA_LABELS = [
   'RESIDENT',
   'FELLOW',
   'SPECIALTY',
-  'PROGRAM',
+  'SCHOOL',
   'DEPARTMENT',
   'ROLE',
   'TRACK',
@@ -169,7 +169,7 @@ const formatClock = (totalSeconds: number) => {
 }
 
 export function DirectoryDashGame({
-  programName,
+  schoolName,
   status,
   peopleFound,
   emailsFound,
@@ -178,7 +178,7 @@ export function DirectoryDashGame({
   elapsedSeconds = 0,
   onViewResults,
 }: {
-  programName: string
+  schoolName: string
   status: string
   peopleFound: number
   emailsFound: number
@@ -554,7 +554,7 @@ export function DirectoryDashGame({
     <div className="mini-game-shell">
       <div className="mini-game-header">
         <div className="mini-status-strip">
-          <span>Program: {programName}</span>
+          <span>School: {schoolName}</span>
           <span>Stage: {status}</span>
           <span>People Found: {peopleFound}</span>
           <span>Emails Found: {emailsFound}</span>

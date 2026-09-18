@@ -1,21 +1,17 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { authApi } from './api/auth'
 import { schoolsApi } from './api/schools'
-import { programsApi } from './api/programs'
 import { peopleApi } from './api/people'
-import { runsApi } from './api/runs'
+import { applyRunEvent, runsApi, TERMINAL_EVENTS } from './api/runs'
 import { AppShell } from './components/layout/AppShell'
 import { BackendUnavailableState } from './components/common/BackendUnavailableState'
 import { LoadingState } from './components/common/LoadingState'
-import { AdminSubmissionsPage } from './pages/AdminSubmissionsPage'
 import { LoginPage } from './pages/LoginPage'
 import { PastCrawlsPage } from './pages/PastCrawlsPage'
-import { SubmitSchoolsPage } from './pages/SubmitSchoolsPage'
 import { PersonPage } from './pages/PersonPage'
 import { RunMonitorPage } from './pages/RunMonitorPage'
 import type { School } from './types/school'
-import type { Program } from './types/program'
 import type { Person, PersonStatus } from './types/person'
 import type { Run } from './types/run'
 
@@ -24,31 +20,20 @@ export type Screen =
   | 'person'
   | 'run-monitor'
   | 'crawl'
-  | 'submit'
   | 'history'
-  | 'admin'
-
-type WizardRunType = 'directory' | 'crawl' | 'both'
-type GoalMode = 'target' | 'everyone'
 
 type WizardDraft = {
   schoolId: string
-  programId: string
-  runType: WizardRunType
-  directoryUrl: string
-  startUrl: string
-  goalMode: GoalMode
-  peopleGoal: string
+  schoolUrl: string
+  maxSpendUsd: string
+  forceRescan: boolean
 }
 
-const createWizardDraft = (schoolId = '', programId = ''): WizardDraft => ({
+const createWizardDraft = (schoolId = '', schoolUrl = ''): WizardDraft => ({
   schoolId,
-  programId,
-  runType: 'both',
-  directoryUrl: '',
-  startUrl: '',
-  goalMode: 'target',
-  peopleGoal: '45',
+  schoolUrl,
+  maxSpendUsd: '',
+  forceRescan: false,
 })
 
 function App() {
@@ -56,10 +41,8 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isAdmin, setIsAdmin] = useState(false)
   const [schools, setSchools] = useState<School[]>([])
-  const [programs, setPrograms] = useState<Program[]>([])
   const [people, setPeople] = useState<Person[]>([])
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>('')
-  const [selectedProgramId, setSelectedProgramId] = useState<string>('')
   const [selectedPersonId, setSelectedPersonId] = useState<string>('')
   const [run, setRun] = useState<Run | null>(null)
   const [loading, setLoading] = useState(true)
@@ -69,6 +52,9 @@ function App() {
   const [trainingFilter, setTrainingFilter] = useState<'all' | 'Resident' | 'Fellow'>('all')
   const [yearFilter, setYearFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState<'all' | PersonStatus>('all')
+  const stopWatching = useRef<(() => void) | null>(null)
+
+  useEffect(() => () => stopWatching.current?.(), [])
 
   useEffect(() => {
     const init = async () => {
@@ -106,58 +92,21 @@ function App() {
 
   useEffect(() => {
     if (!selectedSchoolId) {
-      setPrograms([])
-      setSelectedProgramId('')
-      return
-    }
-
-    const loadPrograms = async () => {
-      const programList = await programsApi.listPrograms(selectedSchoolId)
-      setPrograms(programList)
-    }
-
-    void loadPrograms()
-  }, [selectedSchoolId])
-
-  useEffect(() => {
-    if (!selectedProgramId) {
       setPeople([])
       return
     }
 
     const loadPeople = async () => {
-      const personList = await peopleApi.listPeople(selectedProgramId)
+      const personList = await peopleApi.listPeopleForSchool(selectedSchoolId)
       setPeople(personList)
     }
 
     void loadPeople()
-  }, [selectedProgramId])
-
-  useEffect(() => {
-    if (!selectedSchoolId) return
-
-    const schoolPrograms = programs.filter((program) => program.schoolId === selectedSchoolId)
-    if (schoolPrograms.length === 0) {
-      setSelectedProgramId('')
-      return
-    }
-
-    setSelectedProgramId((current) => {
-      if (current && schoolPrograms.some((program) => program.id === current)) {
-        return current
-      }
-      return schoolPrograms[0].id
-    })
-  }, [programs, selectedSchoolId])
+  }, [selectedSchoolId])
 
   const selectedSchool = useMemo(
     () => schools.find((school) => school.id === selectedSchoolId) ?? null,
     [schools, selectedSchoolId],
-  )
-
-  const selectedProgram = useMemo(
-    () => programs.find((program) => program.id === selectedProgramId) ?? null,
-    [programs, selectedProgramId],
   )
 
   const selectedPerson = useMemo(
@@ -166,7 +115,7 @@ function App() {
   )
 
   const filteredPeople = useMemo(() => {
-    if (!selectedProgramId) return []
+    if (!selectedSchoolId) return []
 
     return people.filter((person) => {
       const matchesText =
@@ -178,12 +127,7 @@ function App() {
 
       return matchesText && matchesTraining && matchesYear && matchesStatus
     })
-  }, [people, query, selectedProgramId, statusFilter, trainingFilter, yearFilter])
-
-  const schoolPrograms = useMemo(
-    () => (selectedSchoolId ? programs.filter((program) => program.schoolId === selectedSchoolId) : []),
-    [programs, selectedSchoolId],
-  )
+  }, [people, query, selectedSchoolId, statusFilter, trainingFilter, yearFilter])
 
   const handleLogin = async (password: string) => {
     try {
@@ -211,44 +155,23 @@ function App() {
     setScreen('main')
     setRun(null)
     setSelectedSchoolId('')
-    setSelectedProgramId('')
     setSelectedPersonId('')
   }
-
-  const wizardSchoolOptions = useMemo(
-    () => schools,
-    [schools],
-  )
-
-  const wizardProgramOptions = useMemo(
-    () => programs.filter((program) => program.schoolId === wizardDraft.schoolId),
-    [programs, wizardDraft.schoolId],
-  )
 
   const wizardErrors = useMemo(() => {
     const errors: Record<string, string> = {}
     const hasSchool = !!wizardDraft.schoolId
-    const hasProgram = !!wizardDraft.programId
+    const schoolUrl = wizardDraft.schoolUrl.trim()
 
     if (!hasSchool) errors.school = 'School is required.'
-    if (!hasProgram) errors.program = 'Program is required.'
-
-    if (wizardDraft.runType === 'directory' || wizardDraft.runType === 'both') {
-      if (!wizardDraft.directoryUrl.trim()) {
-        errors.directoryUrl = 'Directory URL is required.'
-      }
+    if (!schoolUrl) {
+      errors.schoolUrl = 'School URL is required.'
     }
 
-    if (wizardDraft.runType === 'crawl' || wizardDraft.runType === 'both') {
-      if (!wizardDraft.startUrl.trim()) {
-        errors.startUrl = 'Program URL is required.'
-      }
-    }
-
-    if (wizardDraft.goalMode === 'target') {
-      const goalValue = Number(wizardDraft.peopleGoal)
-      if (!wizardDraft.peopleGoal || Number.isNaN(goalValue) || goalValue <= 0 || !Number.isInteger(goalValue)) {
-        errors.peopleGoal = 'A positive integer is required.'
+    if (wizardDraft.maxSpendUsd.trim()) {
+      const amount = Number(wizardDraft.maxSpendUsd)
+      if (!Number.isFinite(amount) || amount <= 0) {
+        errors.maxSpendUsd = 'Enter a dollar amount greater than zero.'
       }
     }
 
@@ -261,38 +184,83 @@ function App() {
     if (!canStartUpdate) return
 
     const payload = {
-      programId: wizardDraft.programId,
-      runDirectorySearch: wizardDraft.runType === 'directory' || wizardDraft.runType === 'both',
-      runNewCrawl: wizardDraft.runType === 'crawl' || wizardDraft.runType === 'both',
-      directoryUrl: wizardDraft.directoryUrl,
-      startUrl: wizardDraft.startUrl,
-      peopleGoal: wizardDraft.goalMode === 'target' ? Number(wizardDraft.peopleGoal) : null,
-      noFixedGoal: wizardDraft.goalMode === 'everyone',
+      schoolId: wizardDraft.schoolId,
+      schoolUrl: wizardDraft.schoolUrl.trim(),
+      maxSpendUsd: wizardDraft.maxSpendUsd.trim() ? Number(wizardDraft.maxSpendUsd) : null,
+      forceRescan: wizardDraft.forceRescan,
     }
 
+    const school = schools.find((item) => item.id === wizardDraft.schoolId)
     const job = await runsApi.startRun(payload)
     setSelectedSchoolId(wizardDraft.schoolId)
-    setSelectedProgramId(wizardDraft.programId)
-    setRun(job)
+    setRun({ ...job, schoolId: wizardDraft.schoolId, schoolName: school?.name })
     setScreen('run-monitor')
 
-    const unsubscribe = runsApi.subscribeToRun(job.id, (event) => {
-      if (event.run) {
-        setRun(event.run)
+    watchRun(job.id)
+  }
+
+  /**
+   * Follow a run until it ends: the event stream drives the live feed and
+   * tallies, and a slow poll catches the end even if the stream drops (the
+   * server may be stopped when idle). At the end the run row is authoritative.
+   */
+  const watchRun = (runId: string) => {
+    stopWatching.current?.()
+    let finished = false
+
+    const finish = async () => {
+      if (finished) return
+      finished = true
+      cleanup()
+      try {
+        const final = await runsApi.getRun(runId)
+        setRun((current) => ({
+          ...(current ?? final),
+          status: final.status === 'running' || final.status === 'queued' ? 'completed' : final.status,
+          stage: final.status === 'failed' ? 'failed' : 'complete',
+          progress: 100,
+          finishedAt: final.finishedAt,
+          elapsedSeconds: final.elapsedSeconds,
+          spendUsd: final.spendUsd ?? current?.spendUsd,
+          stoppedAtLimit: final.stoppedAtLimit,
+          counts: {
+            ...(current?.counts ?? final.counts!),
+            ...(final.counts ?? {}),
+            // The run row only counts people once a site finishes; never show
+            // fewer than the stream already reported.
+            peopleFound: Math.max(final.counts?.peopleFound ?? 0, current?.counts?.peopleFound ?? 0),
+          },
+        }))
+      } catch {
+        setRun((current) => (current ? { ...current, progress: 100, stage: 'complete' } : current))
       }
+    }
+
+    const unsubscribe = runsApi.subscribeToRun(runId, (event) => {
+      setRun((current) => (current ? applyRunEvent(current, event) : current))
+      if (TERMINAL_EVENTS.has(event.type)) void finish()
     })
 
-    if (typeof unsubscribe === 'function') {
-      window.setTimeout(unsubscribe, 4000)
+    const poll = window.setInterval(async () => {
+      try {
+        const latest = await runsApi.getRun(runId)
+        if (['completed', 'failed', 'cancelled'].includes(latest.status)) void finish()
+      } catch {
+        /* transient; the next poll retries */
+      }
+    }, 5000)
+
+    const cleanup = () => {
+      window.clearInterval(poll)
+      if (typeof unsubscribe === 'function') unsubscribe()
+      stopWatching.current = null
     }
+    stopWatching.current = cleanup
   }
 
   const handleViewResults = () => {
     if (!run) return
     setRun(null)
-    if (run.programId) {
-      setSelectedProgramId(run.programId)
-    }
     if (run.schoolId) {
       setSelectedSchoolId(run.schoolId)
     }
@@ -313,19 +281,8 @@ function App() {
 
   const navigateToCrawl = () => {
     const schoolId = selectedSchoolId || schools[0]?.id || ''
-    const schoolOptions = programs.filter((program) => program.schoolId === schoolId)
-    const programId = selectedProgramId || schoolOptions[0]?.id || ''
-    const programMatch = programId ? programs.find((program) => program.id === programId) : undefined
-
-    setWizardDraft({
-      schoolId,
-      programId,
-      runType: 'both',
-      directoryUrl: programMatch?.directoryUrl ?? '',
-      startUrl: programMatch?.startUrl ?? '',
-      goalMode: 'target',
-      peopleGoal: '45',
-    })
+    const school = schools.find((item) => item.id === schoolId)
+    setWizardDraft(createWizardDraft(schoolId, school?.canonicalUrl ?? ''))
     setScreen('crawl')
   }
 
@@ -333,11 +290,9 @@ function App() {
     <AppShell
       onLogout={handleLogout}
       onNavigateSchools={() => setScreen('main')}
-      onNavigateSubmit={() => setScreen('submit')}
       onNavigateHistory={() => setScreen('history')}
-      onNavigateAdmin={() => setScreen('admin')}
       isAdmin={isAdmin}
-      onNavigateCrawl={navigateToCrawl}
+      onNavigateCrawl={isAdmin ? navigateToCrawl : undefined}
       statusText="Backend online"
     >
       {screen === 'main' && (
@@ -350,14 +305,13 @@ function App() {
           </div>
 
           <div className="panel-block">
-            <div className="table-controls" style={{ gridTemplateColumns: '1fr 1fr' }}>
+            <div className="table-controls" style={{ gridTemplateColumns: '1fr' }}>
               <div className="field-group" style={{ marginTop: 0 }}>
                 <label className="input-label">School</label>
                 <select
                   value={selectedSchoolId}
                   onChange={(event) => {
                     setSelectedSchoolId(event.target.value)
-                    setSelectedProgramId('')
                     setPeople([])
                   }}
                 >
@@ -367,40 +321,21 @@ function App() {
                   ))}
                 </select>
               </div>
-
-              <div className="field-group" style={{ marginTop: 0 }}>
-                <label className="input-label">Program</label>
-                <select
-                  value={selectedProgramId}
-                  onChange={(event) => setSelectedProgramId(event.target.value)}
-                  disabled={!selectedSchoolId}
-                >
-                  {!selectedSchoolId && <option value="">Select a school first</option>}
-                  {selectedSchoolId && <option value="">Select a program</option>}
-                  {schoolPrograms.map((program) => (
-                    <option key={program.id} value={program.id}>{program.name}</option>
-                  ))}
-                </select>
-              </div>
             </div>
           </div>
 
           {!selectedSchoolId && (
-            <div className="empty-state">Select a school and program to view people.</div>
+            <div className="empty-state">Select a school to view people.</div>
           )}
 
-          {selectedSchoolId && !selectedProgramId && (
-            <div className="empty-state">Select a program to view people.</div>
-          )}
-
-          {selectedSchoolId && selectedProgramId && selectedProgram && (
+          {selectedSchoolId && selectedSchool && (
             <>
               <div className="summary-row">
                 <div className="summary-card"><div className="summary-label">Total People</div><div className="summary-value">{filteredPeople.length}</div></div>
                 <div className="summary-card"><div className="summary-label">Residents</div><div className="summary-value">{filteredPeople.filter((person) => person.trainingType === 'Resident').length}</div></div>
                 <div className="summary-card"><div className="summary-label">Fellows</div><div className="summary-value">{filteredPeople.filter((person) => person.trainingType === 'Fellow').length}</div></div>
                 <div className="summary-card"><div className="summary-label">Emails Found</div><div className="summary-value">{filteredPeople.filter((person) => person.email).length}</div></div>
-                <div className="summary-card"><div className="summary-label">Last Updated</div><div className="summary-value">{formatDate(selectedProgram.lastUpdated)}</div></div>
+                <div className="summary-card"><div className="summary-label">Last Updated</div><div className="summary-value">{formatDate(selectedSchool.lastUpdated)}</div></div>
               </div>
 
               <div className="table-panel">
@@ -468,22 +403,8 @@ function App() {
         </main>
       )}
 
-      {screen === 'submit' && <SubmitSchoolsPage onBack={() => setScreen('main')} />}
-
       {screen === 'history' && (
         <PastCrawlsPage
-          onBack={() => setScreen('main')}
-          onOpenRun={(runId) => {
-            void runsApi.getRun(runId).then((loaded) => {
-              setRun(loaded)
-              setScreen('run-monitor')
-            })
-          }}
-        />
-      )}
-
-      {screen === 'admin' && (
-        <AdminSubmissionsPage
           onBack={() => setScreen('main')}
           onOpenRun={(runId) => {
             void runsApi.getRun(runId).then((loaded) => {
@@ -497,7 +418,6 @@ function App() {
       {screen === 'person' && selectedPerson && (
         <PersonPage
           school={selectedSchool ?? undefined}
-          program={selectedProgram ?? undefined}
           person={selectedPerson}
           onBack={() => setScreen('main')}
         />
@@ -520,7 +440,7 @@ function App() {
           <div className="page-header-row">
             <div>
               <div className="breadcrumb">Crawl</div>
-              <h2>Start Crawl / Update</h2>
+              <h2>Update School</h2>
             </div>
           </div>
 
@@ -531,21 +451,17 @@ function App() {
                 value={wizardDraft.schoolId}
                 onChange={(event) => {
                   const nextSchoolId = event.target.value
-                  const nextProgramOptions = programs.filter((program) => program.schoolId === nextSchoolId)
-                  const nextProgramId = nextProgramOptions[0]?.id ?? ''
-                  const selectedProgram = nextProgramOptions.find((program) => program.id === nextProgramId)
+                  const school = schools.find((item) => item.id === nextSchoolId)
 
                   setWizardDraft((current) => ({
                     ...current,
                     schoolId: nextSchoolId,
-                    programId: nextProgramId,
-                    directoryUrl: selectedProgram?.directoryUrl ?? '',
-                    startUrl: selectedProgram?.startUrl ?? '',
+                    schoolUrl: school?.canonicalUrl ?? '',
                   }))
                 }}
               >
                 <option value="">Select a school</option>
-                {wizardSchoolOptions.map((school) => (
+                {schools.map((school) => (
                   <option key={school.id} value={school.id}>{school.name}</option>
                 ))}
               </select>
@@ -553,122 +469,44 @@ function App() {
             </div>
 
             <div className="field-group">
-              <label className="input-label">Program</label>
-              <select
-                value={wizardDraft.programId}
-                onChange={(event) => {
-                  const nextProgramId = event.target.value
-                  const selectedProgram = programs.find((program) => program.id === nextProgramId)
-                  setWizardDraft((current) => ({
-                    ...current,
-                    programId: nextProgramId,
-                    directoryUrl: selectedProgram?.directoryUrl ?? current.directoryUrl,
-                    startUrl: selectedProgram?.startUrl ?? current.startUrl,
-                  }))
-                }}
-                disabled={!wizardDraft.schoolId}
-              >
-                {!wizardDraft.schoolId && <option value="">Select a school first</option>}
-                {wizardDraft.schoolId && <option value="">Select a program</option>}
-                {wizardProgramOptions.map((program) => (
-                  <option key={program.id} value={program.id}>{program.name}</option>
-                ))}
-              </select>
-              {wizardErrors.program ? <div className="form-error">{wizardErrors.program}</div> : null}
+              <label className="input-label">School URL</label>
+              <input
+                value={wizardDraft.schoolUrl}
+                onChange={(event) => setWizardDraft((current) => ({ ...current, schoolUrl: event.target.value }))}
+                placeholder="https://school.edu"
+              />
+              {wizardErrors.schoolUrl ? <div className="form-error">{wizardErrors.schoolUrl}</div> : null}
             </div>
 
-            <div className="wizard-step" style={{ marginTop: '1.2rem' }}>What would you like to run?</div>
-            <div className="run-options">
-              {(['directory', 'crawl', 'both'] as WizardRunType[]).map((runType) => (
-                <button
-                  key={runType}
-                  className={`option-card ${wizardDraft.runType === runType ? 'selected' : ''}`}
-                  onClick={() => setWizardDraft((current) => ({ ...current, runType }))}
-                >
-                  <strong>{runType === 'directory' ? 'DIRECTORY SEARCH' : runType === 'crawl' ? 'NEW CRAWL' : 'BOTH'}</strong>
-                  <span>
-                    {runType === 'directory'
-                      ? 'Search the official school or health system directory for additional information about known people.'
-                      : runType === 'crawl'
-                        ? 'Crawl the residency or fellowship program website to discover residents and fellows.'
-                        : 'Discover residents and fellows from the website and then search the directory for additional details.'}
-                  </span>
-                </button>
-              ))}
+            <div className="field-group">
+              <label className="input-label">Budget</label>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={wizardDraft.maxSpendUsd}
+                onChange={(event) => setWizardDraft((current) => ({ ...current, maxSpendUsd: event.target.value }))}
+                placeholder="No cap"
+              />
+              {wizardErrors.maxSpendUsd ? <div className="form-error">{wizardErrors.maxSpendUsd}</div> : null}
             </div>
 
-            {(wizardDraft.runType === 'directory' || wizardDraft.runType === 'both') && (
-              <div className="field-group">
-                <label className="input-label">Directory URL</label>
+            <div className="field-group">
+              <label className="checkbox-row">
                 <input
-                  value={wizardDraft.directoryUrl}
-                  onChange={(event) => setWizardDraft((current) => ({ ...current, directoryUrl: event.target.value }))}
-                  placeholder="https://school.edu/directory"
+                  type="checkbox"
+                  checked={wizardDraft.forceRescan}
+                  onChange={(event) => setWizardDraft((current) => ({ ...current, forceRescan: event.target.checked }))}
                 />
-                {wizardErrors.directoryUrl ? <div className="form-error">{wizardErrors.directoryUrl}</div> : null}
-              </div>
-            )}
-
-            {(wizardDraft.runType === 'crawl' || wizardDraft.runType === 'both') && (
-              <div className="field-group">
-                <label className="input-label">Program Start URL</label>
-                <input
-                  value={wizardDraft.startUrl}
-                  onChange={(event) => setWizardDraft((current) => ({ ...current, startUrl: event.target.value }))}
-                  placeholder="https://school.edu/program"
-                />
-                {wizardErrors.startUrl ? <div className="form-error">{wizardErrors.startUrl}</div> : null}
-              </div>
-            )}
-
-            {(wizardDraft.runType === 'crawl' || wizardDraft.runType === 'both') && (
-              <div className="field-group">
-                <label className="input-label">Stopping Behavior</label>
-                <div className="radio-set">
-                  <label>
-                    <input
-                      type="radio"
-                      checked={wizardDraft.goalMode === 'target'}
-                      onChange={() => setWizardDraft((current) => ({ ...current, goalMode: 'target' }))}
-                    />
-                    <span>Target number of people</span>
-                  </label>
-                  <label>
-                    <input
-                      type="radio"
-                      checked={wizardDraft.goalMode === 'everyone'}
-                      onChange={() => setWizardDraft((current) => ({ ...current, goalMode: 'everyone' }))}
-                    />
-                    <span>No fixed goal / find everyone</span>
-                  </label>
-                </div>
-                {wizardDraft.goalMode === 'target' && (
-                  <>
-                    <label className="input-label">People Goal</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={wizardDraft.peopleGoal}
-                      onChange={(event) => setWizardDraft((current) => ({ ...current, peopleGoal: event.target.value }))}
-                      placeholder="45"
-                    />
-                    {wizardErrors.peopleGoal ? <div className="form-error">{wizardErrors.peopleGoal}</div> : null}
-                  </>
-                )}
-              </div>
-            )}
+                <span>Force rescan</span>
+              </label>
+            </div>
 
             <div className="review-box" style={{ marginTop: '1.2rem' }}>
               <div className="review-row"><span>School</span><strong>{schools.find((school) => school.id === wizardDraft.schoolId)?.name ?? '—'}</strong></div>
-              <div className="review-row"><span>Program</span><strong>{programs.find((program) => program.id === wizardDraft.programId)?.name ?? '—'}</strong></div>
-              <div className="review-row"><span>Run</span><strong>{wizardDraft.runType === 'directory' ? 'Directory Search' : wizardDraft.runType === 'crawl' ? 'New Crawl' : 'New Crawl + Directory Search'}</strong></div>
-              {(wizardDraft.runType === 'crawl' || wizardDraft.runType === 'both') && (
-                <div className="review-row"><span>Program URL</span><strong>{wizardDraft.startUrl || '—'}</strong></div>
-              )}
-              {(wizardDraft.runType === 'directory' || wizardDraft.runType === 'both') && (
-                <div className="review-row"><span>Directory URL</span><strong>{wizardDraft.directoryUrl || '—'}</strong></div>
-              )}
-              <div className="review-row"><span>Stopping Rule</span><strong>{wizardDraft.goalMode === 'everyone' ? 'No fixed goal / find everyone' : `Approximately ${wizardDraft.peopleGoal || '0'} people`}</strong></div>
+              <div className="review-row"><span>URL</span><strong>{wizardDraft.schoolUrl || '—'}</strong></div>
+              <div className="review-row"><span>Budget</span><strong>{wizardDraft.maxSpendUsd ? `$${wizardDraft.maxSpendUsd}` : 'No cap'}</strong></div>
+              <div className="review-row"><span>Force rescan</span><strong>{wizardDraft.forceRescan ? 'Yes' : 'No'}</strong></div>
             </div>
 
             <div className="modal-actions">

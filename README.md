@@ -1,8 +1,8 @@
 # agentscrape-frontend
 
-Frontend for the contact-extraction platform. Browse schools, programmes and the
-people found on each institution's site, launch crawls, and review where every
-value came from.
+Frontend for the contact-extraction platform. Browse schools and the people
+found on each institution's site, launch staff-only crawls, and review where
+every value came from.
 
 Built on the UI by [@Carsonshef](https://github.com/Carsonshef/frontend) and
 wired to the [agentscrape backend](https://github.com/marvalarva2929/agentscrape).
@@ -75,18 +75,17 @@ Settings → Pages. Until then the `gh-pages` branch is the source of truth.
 
 | Password | Grants |
 |---|---|
-| `APP_PASSWORD` | Browse schools, programmes and people; export; submit a CSV request |
-| `ADMIN_PASSWORD` | The above, plus the submitted-CSV queue and launching runs |
+| `APP_PASSWORD` | Browse schools, people, sources and exports |
+| `ADMIN_PASSWORD` | The above, plus launching billable school crawls |
 
-Launching a crawl is billable, so clients request schools and staff run them.
+Launching a crawl is billable, so clients email requested schools and staff
+populate/run them separately.
 
 ## Screens
 
-- **Schools → Programs → People** — the main navigation
+- **Schools → People** — the main navigation
 - **Person** — every field with its source page, capture time and a screenshot
   with the exact fields highlighted
-- **Request schools** — clients upload a CSV of the schools they want
-- **Admin → Submitted CSVs** — staff review a request and launch it with a budget
 - **Past crawls** — crawls take minutes and there are no notifications, so this
   is how you come back to a finished run
 - **Run monitor** — live progress over SSE, including the skipped state when a

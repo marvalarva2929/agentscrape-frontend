@@ -11,16 +11,25 @@ export interface AgentActivity {
   recordsFound?: number
 }
 
+/** One line of the live activity feed: what the agent just did. */
+export interface FeedItem {
+  id: string
+  at: string
+  kind: 'page' | 'note' | 'error'
+  message: string
+  url?: string
+  records?: number
+  trainees?: number
+}
+
 export interface Run {
   id: string
-  programId: string
   schoolId?: string
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
   stage?: RunStage
   startedAt?: string
   finishedAt?: string
   counts?: RunCounts
-  programName?: string
   schoolName?: string
   elapsedSeconds?: number
   progress?: number
@@ -29,8 +38,6 @@ export interface Run {
   emailsFound?: number
   warnings?: number
   runType?: 'Directory Search' | 'New Crawl' | 'New Crawl + Directory Search'
-  programUrl?: string
-  directoryUrl?: string
   agentActivity?: AgentActivity[]
   /** Live spend, metered as the run happens rather than totalled at the end. */
   spendUsd?: number
@@ -44,4 +51,12 @@ export interface Run {
   skipped?: boolean
   skipReason?: string
   lastScrapedAt?: string
+  /** Newest first, capped. Built from the live event stream. */
+  feed?: FeedItem[]
+  /** Live tallies from the stream; the run row only updates when a site ends. */
+  pagesRead?: number
+  traineesFound?: number
+  programsTotal?: number
+  programsCovered?: number
+  errorMessage?: string
 }

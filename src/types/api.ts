@@ -21,7 +21,6 @@ export interface PaginatedResponse<T> {
 
 export interface RunResponse {
   id: string
-  programId: string
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
   stage?: 'discovering' | 'directory' | 'finalizing' | 'complete'
   startedAt?: string

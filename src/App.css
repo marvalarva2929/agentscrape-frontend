@@ -107,13 +107,11 @@ button {
 }
 
 .page-header-row,
-.program-header,
 .person-header,
 .section-title-row,
 .modal-header,
 .monitor-header,
 .card-header-row,
-.program-name-row,
 .panel-header {
   display: flex;
   align-items: center;
@@ -164,8 +162,7 @@ button {
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
-.school-card,
-.program-card {
+.school-card {
   width: 100%;
   text-align: left;
   background: white;
@@ -556,8 +553,136 @@ td {
 }
 
 .result-grid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   margin-top: 1rem;
+}
+
+.activity-feed {
+  margin-top: 1.4rem;
+  background: white;
+  border: 1px solid #dfe8ed;
+  border-radius: 1rem;
+  padding: 1rem 1.2rem;
+}
+
+.activity-feed-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.activity-feed-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #102130;
+}
+
+.live-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #114d3d;
+}
+
+.live-dot::before {
+  content: '';
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #1f9d6f;
+  animation: live-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  50% { opacity: 0.25; }
+}
+
+.activity-empty {
+  color: #537081;
+  margin: 0.8rem 0 0.2rem;
+}
+
+.activity-list {
+  list-style: none;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  max-height: 28rem;
+  overflow-y: auto;
+}
+
+.activity-item {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: start;
+  padding: 0.55rem 0.2rem;
+  border-top: 1px solid #edf2f4;
+  font-size: 0.85rem;
+  color: #3d5566;
+}
+
+.activity-item:first-child {
+  border-top: none;
+  animation: activity-in 0.35s ease-out;
+}
+
+@keyframes activity-in {
+  from { opacity: 0; transform: translateY(-4px); }
+}
+
+.activity-item time {
+  color: #7b93a3;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-item.note {
+  color: #102130;
+  font-weight: 600;
+}
+
+.activity-item.error {
+  color: #9b2c2c;
+  font-weight: 600;
+}
+
+.activity-item.found .activity-body span {
+  color: #102130;
+}
+
+.activity-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.activity-url {
+  color: #7b93a3;
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-count {
+  color: #114d3d;
+  background: #dff4ec;
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+  font-size: 0.8rem;
+}
+
+.feed-error-note {
+  color: #9b2c2c;
+  font-size: 0.85rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot::before,
+  .activity-item:first-child {
+    animation: none;
+  }
 }
 
 .mini-game-shell {
@@ -1085,7 +1210,6 @@ td {
 @media (max-width: 600px) {
   .topbar,
   .page-header-row,
-  .program-header,
   .person-header,
   .section-title-row,
   .monitor-header,
@@ -1116,32 +1240,6 @@ td {
   .page-shell {
     padding: 1.2rem 0.8rem 2rem;
   }
-}
-
-/* --- backend integration: new screens ---------------------------------- */
-
-.upload-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  margin-top: 16px;
-}
-
-.upload-row input[type='text'],
-.upload-row input[type='number'] {
-  flex: 1 1 200px;
-  min-width: 0;
-}
-
-.budget-field {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.budget-field input {
-  width: 110px;
 }
 
 .error-banner {

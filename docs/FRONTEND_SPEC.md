@@ -33,8 +33,8 @@ There are no user accounts. There are two passwords.
 
 | Role | Password grants | Cannot |
 |---|---|---|
-| **Client** | Browse schools, programs and people. View sources. Export. Submit a request for new schools. | Start or cancel a collection run. See the staff queue. |
-| **Staff (admin)** | Everything the client can do, plus the request queue, starting runs with a budget, and past-run costs. | — |
+| **Client** | Browse schools and people. View sources. Export. | Start or cancel a collection run. |
+| **Staff (admin)** | Everything the client can do, plus starting runs with a budget and past-run costs. | — |
 
 Design implication: **one app, with staff-only areas hidden** for clients, not
 two separate apps. Anything that spends money is staff-only.
@@ -73,7 +73,7 @@ These apply on every screen.
 | **Backend offline** | The server is started on demand and stopped when idle, so this is normal, not a crash. | A calm full-page state ("The service is currently offline") with a retry. Not an error toast. |
 | **Signed out** | No session, or the session expired. | Go straight to Sign in. Not an error message. |
 | **Loading** | Any data fetch. | Skeleton or spinner. Lists can be long (hundreds of people). |
-| **Empty** | No schools, programs, people, runs or requests yet. | Explain what would make it non-empty, e.g. "Request schools to get started." |
+| **Empty** | No schools, people or runs yet. | Explain that staff will add requested schools after the client emails them. |
 | **Staff-only area, client signed in** | Client opens a staff URL directly. | "This area needs the staff password." |
 
 ---
@@ -102,35 +102,19 @@ Each school shows:
 
 - Name (fall back to the website domain if there is no name)
 - Location
-- Number of programs
 - Number of people
 - Last updated
 
 Actions:
 
 - Search by name
-- Open a school → its programs
+- Open a school → its people
 
-Empty state for a client: point them at **Request schools**.
-
----
-
-### 5.3 School → Programs
-
-**Who:** everyone. **Purpose:** pick a program within a school.
-
-A program is one training program, e.g. "Internal Medicine Residency". Each
-shows:
-
-- Program name and specialty
-- Residents count, fellows count, total people
-- Last updated
-
-Actions: open a program → its people.
+Empty state for a client: tell them to email the schools they want added.
 
 ---
 
-### 5.4 Program → People (the main working screen)
+### 5.3 School → People
 
 **Who:** everyone. **Purpose:** the list the client actually works with.
 
@@ -157,7 +141,7 @@ sort, visibly de-emphasised.
 **Actions:**
 
 - Open a person → Person detail
-- **Export** this program (see 5.6)
+- **Export** this school (see 5.6)
 
 Lists can be long; paginate or virtualise. The backend pages results, so the UI
 must load all pages — a list that silently stops at 50 is a bug.
@@ -193,9 +177,9 @@ the client.
 
 ### 5.6 Export
 
-**Who:** everyone. **Purpose:** download a program's list for outreach.
+**Who:** everyone. **Purpose:** download a school's list for outreach.
 
-- Starts from a program (5.4). One program per export.
+- Starts from a school (5.3).
 - Exports are generated in the background: show "Preparing…", then a download
   button when ready. Usually seconds.
 - The file is a CSV with these columns:
@@ -204,30 +188,6 @@ the client.
 - No source URLs or screenshots in the file — those are for checking in the app.
 
 *Not built in the current UI.*
-
----
-
-### 5.7 Request schools
-
-**Who:** clients (staff can use it too). **Purpose:** ask for schools to be
-collected. **This does not start anything.**
-
-1. Upload a CSV — one school website per row.
-2. Optional note.
-3. Submit.
-
-After submitting, show what we received, row by row:
-
-| Row shows | Meaning |
-|---|---|
-| **Already in your library** — with how many people we have | We've collected this school before |
-| **New school** | We'll collect it |
-| **Not usable** — with a short reason | Not a valid website, or out of scope |
-
-Plus totals: rows, usable, already known.
-
-Make clear that staff will review and run it — the client should not expect
-results immediately.
 
 ---
 
@@ -273,7 +233,7 @@ may simply have been stopped.
 
 | Outcome | What to show |
 |---|---|
-| **Completed** | Totals: found, new, missing. Link to the program(s). |
+| **Completed** | Totals: found, new, missing. Link back to the school. |
 | **Stopped at budget** | "Stopped when it reached the $X budget." Not a failure — everything collected so far is kept and valid. |
 | **Nothing changed (skipped)** | "Nothing has changed since 12 Sep" and a **Check anyway** button. Finishes in seconds and costs nothing. |
 | **Failed** | Short reason. Often a site was unreachable. People previously collected are kept. |
@@ -283,30 +243,7 @@ may simply have been stopped.
 
 ---
 
-### 5.10 Staff: Request queue
-
-**Who:** staff only. **Purpose:** review client requests and start the work.
-
-Each request shows:
-
-- File name and note
-- Submitted date
-- Schools requested, unusable rows, already known
-- Status: Pending · Running · Done · Rejected
-
-For a **pending** request:
-
-- A single **budget** input in dollars
-- **Run** → starts collection for every usable school, then opens the Run
-  monitor
-
-For a request already run: **View run**.
-
-This is the whole interaction. Keep it that simple.
-
----
-
-### 5.11 Staff: Overview (optional)
+### 5.10 Staff: Overview (optional)
 
 **Who:** staff only. *Backend exists; no UI yet.*
 
@@ -367,12 +304,9 @@ Don't design these:
 
 For whoever builds the new design against the existing app:
 
-- **"CRAWL / UPDATE" is visible to clients.** It should be staff-only (rule 6).
-- **The crawl wizard is out of date** — it still has directory/crawl toggles and
-  a people goal. It should be a school and a dollar budget.
 - **No Export button** (5.6).
 - **Skipped state not shown** in the Run monitor (5.9).
-- **Staff Overview not built** (5.11).
+- **Staff Overview not built** (5.10).
 - **Past crawls doesn't show which school** a run was for.
 - The app is still named "Residency Monitor", though it now covers everyone at a
   school. Worth renaming.
@@ -381,8 +315,7 @@ For whoever builds the new design against the existing app:
 
 ## 9. Open questions
 
-- **"Check anyway"** starts a paid run. Staff only, or should a client's click
-  create a request instead?
+- **"Check anyway"** starts a paid run. It should stay staff-only.
 - Should clients ever see **spend**, or only staff?
 - Is the **Staff Overview** (5.11) wanted?
 
@@ -396,14 +329,11 @@ For wiring, not for design.
 |---|---|
 | Sign in | `POST /auth/login`, `GET /auth/session`, `POST /auth/logout` |
 | Schools | `GET /schools` |
-| Programs | `GET /schools/{id}/programs` |
-| People | `GET /programs/{id}/people`, `GET /people/stats` |
+| People | `GET /schools/{id}/people`, `GET /people/stats` |
 | Person | `GET /people/{id}`, `GET /people/{id}/source`, `GET /people/{id}/versions` |
 | Export | `POST /people/export`, `GET /people/export/{id}` |
-| Request schools | `POST /submissions` |
 | Past crawls | `GET /runs` |
 | Run monitor | `GET /runs/{id}`, `GET /runs/{id}/events` (live), `GET /runs/{id}/sites`, `POST /runs/{id}/cancel` |
-| Request queue | `GET /admin/submissions`, `POST /admin/submissions/{id}/run` |
 | Overview | `GET /admin/stats` |
 | Offline check | `GET /health` |
 

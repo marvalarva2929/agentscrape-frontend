@@ -3,7 +3,6 @@ import type { Run } from '../types/run'
 export const mockRuns: Record<string, Run> = {
   'run-1': {
     id: 'run-1',
-    programId: 'program-101',
     schoolId: 'school-1',
     status: 'running',
     stage: 'directory',
@@ -18,20 +17,16 @@ export const mockRuns: Record<string, Run> = {
       missingCount: 6,
       failedCount: 0,
     },
-    programName: 'Internal Medicine Residency',
     schoolName: 'Texas Tech University Health Sciences Center',
     elapsedSeconds: 178,
     runType: 'New Crawl + Directory Search',
-    programUrl: 'https://www.ttuhsc.edu/medicine/residency/internal-medicine',
-    directoryUrl: 'https://www.ttuhsc.edu/medicine/directory',
     agentActivity: [
-      { id: 'agent-1', currentPage: 'https://www.ttuhsc.edu/medicine/residency/internal-medicine', currentAction: 'Indexing program pages', stepNumber: 7, recordsFound: 23 },
+      { id: 'agent-1', currentPage: 'https://www.ttuhsc.edu/medicine', currentAction: 'Indexing school pages', stepNumber: 7, recordsFound: 23 },
       { id: 'agent-2', currentPage: 'https://www.ttuhsc.edu/medicine/directory', currentAction: 'Parsing directory records', stepNumber: 16, recordsFound: 18 },
     ],
   },
   'run-2': {
     id: 'run-2',
-    programId: 'program-101',
     schoolId: 'school-1',
     status: 'completed',
     stage: 'complete',
@@ -47,12 +42,9 @@ export const mockRuns: Record<string, Run> = {
       missingCount: 6,
       failedCount: 0,
     },
-    programName: 'Internal Medicine Residency',
     schoolName: 'Texas Tech University Health Sciences Center',
     elapsedSeconds: 1080,
     runType: 'New Crawl + Directory Search',
-    programUrl: 'https://www.ttuhsc.edu/medicine/residency/internal-medicine',
-    directoryUrl: 'https://www.ttuhsc.edu/medicine/directory',
   },
 }
 

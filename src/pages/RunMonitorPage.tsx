@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react'
 import { DirectoryDashGame } from '../components/game/DirectoryDashGame'
-import type { Run } from '../types/run'
+import type { FeedItem, Run } from '../types/run'
+
+const stageLabels: Record<string, string> = {
+  discovering: 'Mapping the site',
+  directory: 'Reading pages',
+  finalizing: 'Finalizing records',
+  complete: 'Completed',
+}
 
 export function RunMonitorPage({
   run,
@@ -14,44 +21,41 @@ export function RunMonitorPage({
   onViewResults?: () => void
 }) {
   const [showGame, setShowGame] = useState(false)
-
-  const stageLabels: Record<string, string> = {
-    discovering: 'Discovering People',
-    directory: 'Directory Enrichment',
-    finalizing: 'Finalizing Records',
-    complete: 'Completed',
-    queued: 'Queued',
-    failed: 'Failed',
-    cancelled: 'Cancelled',
-  }
+  const finished = (run.progress ?? 0) >= 100
+  const elapsed = useElapsed(run.startedAt, run.finishedAt, run.elapsedSeconds, finished)
 
   useEffect(() => {
-    if (run.progress && run.progress >= 100) {
+    if (finished) {
       onStartGame()
     }
-  }, [run, onStartGame])
+  }, [finished, onStartGame])
 
   return (
     <main className="page-shell">
       <div className="monitor-header">
         <div>
-          <div className="breadcrumb">Programs / {run.programName ?? 'Program'}</div>
-          <h2>Updating {run.programName ?? 'Program'}</h2>
+          <div className="breadcrumb">Schools / {run.schoolName ?? 'Selected school'}</div>
+          <h2>{finished ? 'Crawled' : 'Crawling'} {run.schoolName ?? 'Selected school'}</h2>
         </div>
         <div className="monitor-actions">
           <button className="secondary-button" onClick={() => setShowGame(true)}>Play While You Wait</button>
-          <button className="secondary-button" onClick={onBack}>Cancel</button>
+          <button className="secondary-button" onClick={onBack}>{finished ? 'Back' : 'Leave'}</button>
         </div>
       </div>
 
       <div className="progress-strip">
-        <div><span>Status</span><strong>{run.status}</strong></div>
-        <div><span>Elapsed</span><strong>{formatDuration(run.elapsedSeconds ?? 0)}</strong></div>
-        <div><span>Overall Progress</span><strong>{run.progress ?? 0}%</strong></div>
-        <div><span>People Found</span><strong>{run.counts?.peopleFound ?? 0}</strong></div>
-        <div><span>People Enriched</span><strong>{run.counts?.peopleEnriched ?? 0}</strong></div>
-        <div><span>Emails Found</span><strong>{run.counts?.emailsFound ?? 0}</strong></div>
-        <div><span>Failures / Warnings</span><strong>{run.warnings ?? 0}</strong></div>
+        <div><span>Status</span><strong>{finished ? (run.errorMessage ? 'Stopped' : 'Done') : run.status}</strong></div>
+        <div><span>Elapsed</span><strong>{formatDuration(elapsed)}</strong></div>
+        <div><span>Pages read</span><strong>{run.pagesRead ?? 0}</strong></div>
+        <div><span>People found</span><strong>{run.counts?.peopleFound ?? 0}</strong></div>
+        <div><span>Residents &amp; fellows</span><strong>{run.traineesFound ?? 0}</strong></div>
+        <div>
+          <span>Programs covered</span>
+          <strong>
+            {run.programsTotal ? `${run.programsCovered ?? 0} / ${run.programsTotal}` : '—'}
+          </strong>
+        </div>
+        <div><span>Model spend</span><strong>{formatUsd(run.spendUsd)}</strong></div>
       </div>
 
       <div className="stage-bar">
@@ -62,42 +66,104 @@ export function RunMonitorPage({
         ))}
       </div>
 
-      {(run.progress ?? 0) >= 100 && (
+      {finished && (
         <div className="success-panel">
-          <div className="success-header">Update complete</div>
+          <div className="success-header">
+            {run.errorMessage ? 'Crawl stopped early — results so far are saved' : 'Crawl complete'}
+          </div>
           <div className="result-grid">
-            <div><span>Total Found</span><strong>{run.counts?.peopleFound ?? 0}</strong></div>
+            <div><span>People found</span><strong>{run.counts?.peopleFound ?? 0}</strong></div>
+            <div><span>Residents &amp; fellows</span><strong>{run.traineesFound ?? 0}</strong></div>
             <div><span>New</span><strong>{run.counts?.newCount ?? 0}</strong></div>
             <div><span>Changed</span><strong>{run.counts?.changedCount ?? 0}</strong></div>
-            <div><span>Missing</span><strong>{run.counts?.missingCount ?? 0}</strong></div>
-            <div><span>Emails Found</span><strong>{run.counts?.emailsFound ?? 0}</strong></div>
+            <div><span>Pages read</span><strong>{run.pagesRead ?? 0}</strong></div>
+            <div><span>Time</span><strong>{formatDuration(elapsed)}</strong></div>
+            <div><span>Model spend</span><strong>{formatUsd(run.spendUsd)}</strong></div>
           </div>
+          {run.errorMessage && <p className="feed-error-note">{run.errorMessage}</p>}
           <div className="modal-actions">
             {onViewResults ? (
               <button className="primary-button" onClick={onViewResults}>View Results</button>
             ) : (
-              <button className="primary-button" onClick={onBack}>View Program</button>
+              <button className="primary-button" onClick={onBack}>View School</button>
             )}
           </div>
         </div>
       )}
 
+      <section className="activity-feed" aria-live="polite">
+        <div className="activity-feed-header">
+          <h3>Agent activity</h3>
+          {!finished && <span className="live-dot">Live</span>}
+        </div>
+        {(run.feed ?? []).length === 0 ? (
+          <p className="activity-empty">
+            {finished ? 'No activity was recorded for this run.' : 'Waiting for the agent to start…'}
+          </p>
+        ) : (
+          <ol className="activity-list">
+            {(run.feed ?? []).map((item) => (
+              <FeedRow key={item.id} item={item} />
+            ))}
+          </ol>
+        )}
+      </section>
+
       {showGame && (
         <DirectoryDashGame
-          programName={run.programName ?? 'Program'}
+          schoolName={run.schoolName ?? 'Selected school'}
           status={run.stage ?? 'discovering'}
           peopleFound={run.counts?.peopleFound ?? 0}
           emailsFound={run.counts?.emailsFound ?? 0}
           onClose={() => setShowGame(false)}
-          runFinished={(run.progress ?? 0) >= 100}
+          runFinished={finished}
         />
       )}
     </main>
   )
 }
 
+function FeedRow({ item }: { item: FeedItem }) {
+  const time = new Date(item.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  const found = (item.records ?? 0) > 0
+  return (
+    <li className={`activity-item ${item.kind} ${found ? 'found' : ''}`}>
+      <time>{time}</time>
+      <div className="activity-body">
+        <span>{item.message}</span>
+        {item.url && (
+          <a href={item.url} target="_blank" rel="noreferrer" className="activity-url">
+            {item.url}
+          </a>
+        )}
+      </div>
+      {found && <strong className="activity-count">+{item.records}</strong>}
+    </li>
+  )
+}
+
+function useElapsed(startedAt?: string, finishedAt?: string, fallback = 0, stopped = false) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (stopped) return
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [stopped])
+  if (!startedAt) return fallback
+  const end = finishedAt ? Date.parse(finishedAt) : now
+  return Math.max(0, Math.round((end - Date.parse(startedAt)) / 1000))
+}
+
+function formatUsd(value?: number) {
+  if (value === undefined || value === null) return '—'
+  return `$${value.toFixed(value < 1 ? 3 : 2)}`
+}
+
 function formatDuration(totalSeconds: number) {
-  const minutes = Math.floor(totalSeconds / 60)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
   const seconds = totalSeconds % 60
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  const mm = String(minutes).padStart(2, '0')
+  const ss = String(seconds).padStart(2, '0')
+  return hours ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`
 }
