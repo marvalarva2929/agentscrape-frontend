@@ -5,6 +5,7 @@ export function TopNav({
   onNavigateSchools,
   onNavigateCrawl,
   onNavigateHistory,
+  onNavigateGame,
   statusText,
   children,
 }: {
@@ -12,6 +13,7 @@ export function TopNav({
   onNavigateSchools: () => void
   onNavigateCrawl?: () => void
   onNavigateHistory?: () => void
+  onNavigateGame?: () => void
   statusText?: ReactNode
   children?: ReactNode
 }) {
@@ -26,6 +28,9 @@ export function TopNav({
         <button className="nav-link" onClick={onNavigateSchools}>Schools</button>
         {onNavigateHistory ? (
           <button className="nav-link" onClick={onNavigateHistory}>Past crawls</button>
+        ) : null}
+        {onNavigateGame ? (
+          <button className="nav-link" onClick={onNavigateGame}>Directory Dash</button>
         ) : null}
         {onNavigateCrawl ? (
           <button className="primary-button small-button" onClick={onNavigateCrawl}>Run Crawl</button>

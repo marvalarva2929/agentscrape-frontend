@@ -7,6 +7,7 @@ export function AppShell({
   onNavigateSchools,
   onNavigateCrawl,
   onNavigateHistory,
+  onNavigateGame,
   statusText,
 }: {
   children: ReactNode
@@ -14,6 +15,7 @@ export function AppShell({
   onNavigateSchools: () => void
   onNavigateCrawl?: () => void
   onNavigateHistory?: () => void
+  onNavigateGame?: () => void
   statusText?: ReactNode
 }) {
   return (
@@ -23,6 +25,7 @@ export function AppShell({
         onNavigateSchools={onNavigateSchools}
         onNavigateCrawl={onNavigateCrawl}
         onNavigateHistory={onNavigateHistory}
+        onNavigateGame={onNavigateGame}
         statusText={statusText}
       />
       {children}
