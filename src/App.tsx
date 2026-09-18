@@ -163,9 +163,12 @@ function App() {
     const hasSchool = !!wizardDraft.schoolId
     const schoolUrl = wizardDraft.schoolUrl.trim()
 
-    if (!hasSchool) errors.school = 'School is required.'
+    // A school already in the list is optional: a URL alone starts a crawl of
+    // a new school, which is how the first school gets in on a fresh install.
     if (!schoolUrl) {
-      errors.schoolUrl = 'School URL is required.'
+      errors.schoolUrl = hasSchool ? 'School URL is required.' : 'Choose a school or enter its URL.'
+    } else if (!/^https?:\/\/[^\s.]+\.[^\s]+$/i.test(schoolUrl) && !/^[^\s.]+\.[^\s]+$/.test(schoolUrl)) {
+      errors.schoolUrl = 'Enter a web address, e.g. https://medicine.arizona.edu'
     }
 
     if (wizardDraft.maxSpendUsd.trim()) {
@@ -192,8 +195,12 @@ function App() {
 
     const school = schools.find((item) => item.id === wizardDraft.schoolId)
     const job = await runsApi.startRun(payload)
-    setSelectedSchoolId(wizardDraft.schoolId)
-    setRun({ ...job, schoolId: wizardDraft.schoolId, schoolName: school?.name })
+    if (wizardDraft.schoolId) setSelectedSchoolId(wizardDraft.schoolId)
+    setRun({
+      ...job,
+      schoolId: wizardDraft.schoolId || undefined,
+      schoolName: school?.name ?? hostOf(payload.schoolUrl),
+    })
     setScreen('run-monitor')
 
     watchRun(job.id)
@@ -258,13 +265,23 @@ function App() {
     stopWatching.current = cleanup
   }
 
-  const handleViewResults = () => {
+  const handleViewResults = async () => {
     if (!run) return
+    const finished = run
     setRun(null)
-    if (run.schoolId) {
-      setSelectedSchoolId(run.schoolId)
-    }
     setScreen('main')
+    const schoolList = await schoolsApi.listSchools().catch(() => schools)
+    setSchools(schoolList)
+    const crawledHost = finished.schoolName?.toLowerCase()
+    const target =
+      finished.schoolId ||
+      schoolList.find((item) => item.rootDomain?.toLowerCase() === crawledHost)?.id ||
+      selectedSchoolId ||
+      schoolList[0]?.id ||
+      ''
+    // Reload people even when the selection does not change.
+    setSelectedSchoolId('')
+    window.setTimeout(() => setSelectedSchoolId(target), 0)
   }
 
   if (!isAuthenticated) {
@@ -279,9 +296,12 @@ function App() {
     return <BackendUnavailableState />
   }
 
-  const navigateToCrawl = () => {
-    const schoolId = selectedSchoolId || schools[0]?.id || ''
-    const school = schools.find((item) => item.id === schoolId)
+  const navigateToCrawl = async () => {
+    // The list may have changed since login (a seed or another crawl).
+    const schoolList = await schoolsApi.listSchools().catch(() => schools)
+    setSchools(schoolList)
+    const schoolId = selectedSchoolId || schoolList[0]?.id || ''
+    const school = schoolList.find((item) => item.id === schoolId)
     setWizardDraft(createWizardDraft(schoolId, school?.canonicalUrl ?? ''))
     setScreen('crawl')
   }
@@ -325,7 +345,13 @@ function App() {
           </div>
 
           {!selectedSchoolId && (
-            <div className="empty-state">Select a school to view people.</div>
+            <div className="empty-state">
+              {schools.length === 0
+                ? isAdmin
+                  ? 'No schools yet. Use Crawl to add one by its web address.'
+                  : 'No schools yet. Sign in as an admin to crawl the first one.'
+                : 'Select a school to view people.'}
+            </div>
           )}
 
           {selectedSchoolId && selectedSchool && (
@@ -460,12 +486,11 @@ function App() {
                   }))
                 }}
               >
-                <option value="">Select a school</option>
+                <option value="">New school — enter its URL below</option>
                 {schools.map((school) => (
                   <option key={school.id} value={school.id}>{school.name}</option>
                 ))}
               </select>
-              {wizardErrors.school ? <div className="form-error">{wizardErrors.school}</div> : null}
             </div>
 
             <div className="field-group">
@@ -503,7 +528,7 @@ function App() {
             </div>
 
             <div className="review-box" style={{ marginTop: '1.2rem' }}>
-              <div className="review-row"><span>School</span><strong>{schools.find((school) => school.id === wizardDraft.schoolId)?.name ?? '—'}</strong></div>
+              <div className="review-row"><span>School</span><strong>{schools.find((school) => school.id === wizardDraft.schoolId)?.name ?? (wizardDraft.schoolUrl ? `New: ${hostOf(wizardDraft.schoolUrl)}` : '—')}</strong></div>
               <div className="review-row"><span>URL</span><strong>{wizardDraft.schoolUrl || '—'}</strong></div>
               <div className="review-row"><span>Budget</span><strong>{wizardDraft.maxSpendUsd ? `$${wizardDraft.maxSpendUsd}` : 'No cap'}</strong></div>
               <div className="review-row"><span>Force rescan</span><strong>{wizardDraft.forceRescan ? 'Yes' : 'No'}</strong></div>
@@ -533,4 +558,12 @@ function formatDate(value?: string | null) {
   if (!value) return '\u2014'
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString()
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).hostname
+  } catch {
+    return url
+  }
 }
