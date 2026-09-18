@@ -12,6 +12,7 @@ type Category = 'resident' | 'fellow' | 'faculty' | 'staff' | 'student' | 'alumn
 interface PersonResponse {
   id: string
   site_id: string
+  program_id?: string | null
   hospital?: string | null
   full_name?: string | null
   email?: string | null
@@ -69,6 +70,7 @@ const toStatus = (status: string): PersonStatus => {
 const toPerson = (raw: PersonResponse): Person => ({
   id: raw.id,
   schoolId: raw.site_id,
+  programId: raw.program_id ?? undefined,
   name: raw.full_name ?? '',
   email: raw.email ?? undefined,
   trainingType: TRAINING_TYPE[raw.category],
@@ -102,6 +104,14 @@ export const peopleApi = {
     }
 
     const rows = await fetchAllPages<PersonResponse>(`/schools/${schoolId}/people`)
+    return rows.map(toPerson).sort(missingLast)
+  },
+
+  async listPeopleForProgram(programId: string): Promise<Person[]> {
+    if (isMockMode()) {
+      return Promise.resolve(Object.values(mockPeople).flat().filter((person) => person.programId === programId).sort(missingLast))
+    }
+    const rows = await fetchAllPages<PersonResponse>(`/programs/${programId}/people`)
     return rows.map(toPerson).sort(missingLast)
   },
 

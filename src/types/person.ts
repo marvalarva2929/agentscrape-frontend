@@ -27,6 +27,7 @@ export interface PersonVersion {
 export interface Person {
   id: string
   schoolId?: string
+  programId?: string
   name: string
   email?: string
   /** Set only for residents and fellows; everyone else uses `category`. */
