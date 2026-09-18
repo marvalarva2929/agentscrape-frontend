@@ -1,31 +1,17 @@
 import type { School } from '../types/school'
 
+/**
+ * Static demo build: the University of Arizona results from the agent-driven
+ * crawl of 17 September 2026, baked in so the app runs with no backend.
+ */
 export const mockSchools: School[] = [
   {
-    id: 'school-1',
-    name: 'Texas Tech University Health Sciences Center',
-    rootDomain: 'ttuhsc.edu',
-    canonicalUrl: 'https://www.ttuhsc.edu/',
-    location: 'Lubbock, TX',
-    peopleCount: 132,
-    lastUpdated: '2026-09-10',
-  },
-  {
-    id: 'school-2',
-    name: 'University of Michigan Health',
-    rootDomain: 'uofmhealth.org',
-    canonicalUrl: 'https://www.uofmhealth.org/',
-    location: 'Ann Arbor, MI',
-    peopleCount: 214,
-    lastUpdated: '2026-09-09',
-  },
-  {
-    id: 'school-3',
-    name: 'Duke University School of Medicine',
-    rootDomain: 'medschool.duke.edu',
-    canonicalUrl: 'https://medschool.duke.edu/',
-    location: 'Durham, NC',
-    peopleCount: 176,
-    lastUpdated: '2026-09-08',
+    id: 'arizona',
+    name: 'University of Arizona College of Medicine – Tucson',
+    rootDomain: 'medicine.arizona.edu',
+    canonicalUrl: 'https://medicine.arizona.edu/education/residency-fellowship',
+    location: 'Tucson, AZ',
+    peopleCount: 1918,
+    lastUpdated: '2026-09-17T23:25:55-05:00',
   },
 ]

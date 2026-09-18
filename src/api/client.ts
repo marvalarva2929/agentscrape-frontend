@@ -3,7 +3,10 @@ const TOKEN_STORAGE_KEY = 'agentscrape.token'
 const API_BASE_STORAGE_KEY = 'agentscrape.apiBase'
 
 // Not named use* : the React hooks lint rule treats that prefix as a hook.
-const mockApiEnabled = () => import.meta.env.VITE_USE_MOCK_API === 'true'
+// Static demo branch: always runs on the baked-in Arizona data, whatever
+// VITE_USE_MOCK_API says (dev.sh writes it as false into .env.local). Use the
+// demo-live-feed branch to talk to a real backend.
+const mockApiEnabled = () => true
 
 const readStored = (key: string): string | null => {
   try {
