@@ -1,6 +1,7 @@
 import { apiFetch, fetchAllPages, isMockMode } from './client'
 import { mockSchools } from '../mocks/schools'
 import type { School } from '../types/school'
+import type { Program } from '../types/program'
 
 /** The backend's school shape, which uses snake_case. */
 interface SchoolResponse {
@@ -13,6 +14,20 @@ interface SchoolResponse {
   last_updated?: string | null
 }
 
+interface ProgramResponse {
+  id: string
+  school_id: string
+  name: string
+  specialty?: string | null
+  type?: string | null
+  resident_count?: number | null
+  fellow_count?: number | null
+  people_count?: number | null
+  last_updated?: string | null
+  start_url?: string | null
+  directory_url?: string | null
+}
+
 const toSchool = (raw: SchoolResponse): School => ({
   id: raw.id,
   // Falls back to the domain so a school is never nameless in the list.
@@ -22,6 +37,20 @@ const toSchool = (raw: SchoolResponse): School => ({
   location: raw.location ?? undefined,
   peopleCount: raw.people_count ?? 0,
   lastUpdated: raw.last_updated ?? undefined,
+})
+
+const toProgram = (raw: ProgramResponse): Program => ({
+  id: raw.id,
+  schoolId: raw.school_id,
+  name: raw.name,
+  specialty: raw.specialty ?? undefined,
+  type: raw.type ?? undefined,
+  residentCount: raw.resident_count ?? undefined,
+  fellowCount: raw.fellow_count ?? undefined,
+  peopleCount: raw.people_count ?? undefined,
+  lastUpdated: raw.last_updated ?? undefined,
+  startUrl: raw.start_url ?? undefined,
+  directoryUrl: raw.directory_url ?? undefined,
 })
 
 export const schoolsApi = {
@@ -42,5 +71,11 @@ export const schoolsApi = {
     }
 
     return toSchool(await apiFetch<SchoolResponse>(`/schools/${id}`))
+  },
+
+  async listPrograms(schoolId: string): Promise<Program[]> {
+    if (isMockMode()) return []
+    const rows = await fetchAllPages<ProgramResponse>(`/schools/${schoolId}/programs`)
+    return rows.map(toProgram)
   },
 }

@@ -312,7 +312,7 @@ export function DirectoryDashGame({
           paddle.x = clamp(paddle.x + move * paddle.speed * delta, 16, BOARD_WIDTH - paddle.width - 16)
         }
 
-        let ball = { ...current.ball }
+        const ball = { ...current.ball }
         ball.x += ball.vx * delta
         ball.y += ball.vy * delta
 
@@ -357,7 +357,7 @@ export function DirectoryDashGame({
           ball.y = paddleTop - ball.radius - 1
         }
 
-        let nextBricks = current.bricks.map((brick) => ({ ...brick }))
+        const nextBricks = current.bricks.map((brick) => ({ ...brick }))
         let hitBrick = false
         let nextDataStreak = current.dataStreak
         let nextScore = current.score

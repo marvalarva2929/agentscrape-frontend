@@ -7,8 +7,6 @@ export function AppShell({
   onNavigateSchools,
   onNavigateCrawl,
   onNavigateHistory,
-  onNavigateAdmin,
-  isAdmin,
   statusText,
 }: {
   children: ReactNode
@@ -16,8 +14,6 @@ export function AppShell({
   onNavigateSchools: () => void
   onNavigateCrawl?: () => void
   onNavigateHistory?: () => void
-  onNavigateAdmin?: () => void
-  isAdmin?: boolean
   statusText?: ReactNode
 }) {
   return (
@@ -27,8 +23,6 @@ export function AppShell({
         onNavigateSchools={onNavigateSchools}
         onNavigateCrawl={onNavigateCrawl}
         onNavigateHistory={onNavigateHistory}
-        onNavigateAdmin={onNavigateAdmin}
-        isAdmin={isAdmin}
         statusText={statusText}
       />
       {children}

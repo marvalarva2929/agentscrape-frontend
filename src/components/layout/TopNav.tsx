@@ -5,8 +5,6 @@ export function TopNav({
   onNavigateSchools,
   onNavigateCrawl,
   onNavigateHistory,
-  onNavigateAdmin,
-  isAdmin,
   statusText,
   children,
 }: {
@@ -14,8 +12,6 @@ export function TopNav({
   onNavigateSchools: () => void
   onNavigateCrawl?: () => void
   onNavigateHistory?: () => void
-  onNavigateAdmin?: () => void
-  isAdmin?: boolean
   statusText?: ReactNode
   children?: ReactNode
 }) {
@@ -31,11 +27,8 @@ export function TopNav({
         {onNavigateHistory ? (
           <button className="nav-link" onClick={onNavigateHistory}>Past crawls</button>
         ) : null}
-        {isAdmin && onNavigateAdmin ? (
-          <button className="nav-link" onClick={onNavigateAdmin}>Admin</button>
-        ) : null}
-        {isAdmin && onNavigateCrawl ? (
-          <button className="primary-button small-button" onClick={onNavigateCrawl}>CRAWL / UPDATE</button>
+        {onNavigateCrawl ? (
+          <button className="primary-button small-button" onClick={onNavigateCrawl}>Run Crawl</button>
         ) : null}
         {children}
       </nav>

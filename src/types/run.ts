@@ -59,4 +59,10 @@ export interface Run {
   programsTotal?: number
   programsCovered?: number
   errorMessage?: string
+  sitesTotal?: number
+  sitesCompleted?: number
+  sitesSkipped?: number
+  sitesFailed?: number
+  sitesPending?: number
+  stopReason?: string
 }

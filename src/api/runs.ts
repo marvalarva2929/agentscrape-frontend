@@ -20,6 +20,7 @@ interface RunResponse {
   sites_completed: number
   sites_skipped: number
   sites_failed: number
+  sites_pending?: number
   records_found: number
   records_new: number
   records_changed: number
@@ -29,6 +30,7 @@ interface RunResponse {
   created_at: string
   started_at?: string | null
   finished_at?: string | null
+  error_message?: string | null
 }
 
 const elapsed = (startedAt?: string | null, finishedAt?: string | null): number => {
@@ -53,6 +55,13 @@ const toRun = (raw: RunResponse): Run => ({
   },
   spendUsd: raw.spend_usd,
   maxSpendUsd: raw.max_spend_usd ?? undefined,
+  sitesTotal: raw.sites_total,
+  sitesCompleted: raw.sites_completed,
+  sitesSkipped: raw.sites_skipped,
+  sitesFailed: raw.sites_failed,
+  sitesPending: raw.sites_pending,
+  stopReason: raw.stop_reason ?? undefined,
+  errorMessage: raw.error_message ?? undefined,
   // A run that hit its budget is finished with valid partial results, not failed.
   stoppedAtLimit: raw.stop_reason === 'max_spend' || raw.stop_reason === 'max_records',
 })
@@ -181,9 +190,10 @@ const RUN_EVENT_TYPES = [
   'run_completed',
   'run_stopped_at_limit',
   'run_cancelled',
+  'run_failed',
 ]
 
-export const TERMINAL_EVENTS = new Set(['run_completed', 'run_stopped_at_limit', 'run_cancelled'])
+export const TERMINAL_EVENTS = new Set(['run_completed', 'run_stopped_at_limit', 'run_cancelled', 'run_failed'])
 const FEED_LIMIT = 200
 const STAGES = new Set(['discovering', 'directory', 'finalizing', 'complete'])
 
@@ -275,7 +285,7 @@ export function applyRunEvent(run: Run, event: RunEvent): Run {
       if (TERMINAL_EVENTS.has(event.type)) {
         return {
           ...run,
-          status: event.type === 'run_cancelled' ? 'cancelled' : 'completed',
+          status: event.type === 'run_cancelled' ? 'cancelled' : event.type === 'run_failed' ? 'failed' : 'completed',
           stage: 'complete',
           progress: 100,
           stoppedAtLimit: event.type === 'run_stopped_at_limit',

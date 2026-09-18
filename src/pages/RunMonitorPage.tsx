@@ -21,7 +21,7 @@ export function RunMonitorPage({
   onViewResults?: () => void
 }) {
   const [showGame, setShowGame] = useState(false)
-  const finished = (run.progress ?? 0) >= 100
+  const finished = ['completed', 'failed', 'cancelled'].includes(run.status)
   const elapsed = useElapsed(run.startedAt, run.finishedAt, run.elapsedSeconds, finished)
 
   useEffect(() => {
@@ -35,7 +35,7 @@ export function RunMonitorPage({
       <div className="monitor-header">
         <div>
           <div className="breadcrumb">Schools / {run.schoolName ?? 'Selected school'}</div>
-          <h2>{finished ? 'Crawled' : 'Crawling'} {run.schoolName ?? 'Selected school'}</h2>
+          <h2>{finished ? 'Crawl finished' : 'Crawling'} {run.schoolName ?? 'Selected school'}</h2>
         </div>
         <div className="monitor-actions">
           <button className="secondary-button" onClick={() => setShowGame(true)}>Play While You Wait</button>
@@ -44,10 +44,14 @@ export function RunMonitorPage({
       </div>
 
       <div className="progress-strip">
-        <div><span>Status</span><strong>{finished ? (run.errorMessage ? 'Stopped' : 'Done') : run.status}</strong></div>
+        <div><span>Status</span><strong>{run.stoppedAtLimit ? 'stopped at limit' : run.status}</strong></div>
+        <div><span>Operation</span><strong>{run.runType ?? 'Crawl'}</strong></div>
+        <div><span>Stage</span><strong>{run.stage ?? 'queued'}</strong></div>
         <div><span>Elapsed</span><strong>{formatDuration(elapsed)}</strong></div>
         <div><span>Pages read</span><strong>{run.pagesRead ?? 0}</strong></div>
         <div><span>People found</span><strong>{run.counts?.peopleFound ?? 0}</strong></div>
+        <div><span>Sites</span><strong>{run.sitesCompleted ?? 0}/{run.sitesTotal ?? 0} complete</strong></div>
+        <div><span>Skipped / failed</span><strong>{run.sitesSkipped ?? 0} / {run.sitesFailed ?? 0}</strong></div>
         <div><span>Residents &amp; fellows</span><strong>{run.traineesFound ?? 0}</strong></div>
         <div>
           <span>Programs covered</span>

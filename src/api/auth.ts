@@ -61,9 +61,4 @@ export const authApi = {
       return { authenticated: false }
     }
   },
-
-  /** True when the current session may reach the staff-only areas. */
-  isAdmin(session: AuthSession | null): boolean {
-    return session?.user?.scope === 'admin'
-  },
 }
