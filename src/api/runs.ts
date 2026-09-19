@@ -9,6 +9,7 @@ export interface StartRunRequest {
   /** The one control the user sets: a budget in dollars. */
   maxSpendUsd?: number | null
   forceRescan?: boolean
+  schoolName?: string
 }
 
 interface RunResponse {
@@ -16,10 +17,12 @@ interface RunResponse {
   status: string
   stop_reason?: string | null
   label?: string | null
+  config?: { step_budget?: number }
   sites_total: number
   sites_completed: number
   sites_skipped: number
   sites_failed: number
+  sites_rejected?: number
   sites_pending?: number
   records_found: number
   records_new: number
@@ -43,6 +46,7 @@ const toRun = (raw: RunResponse): Run => ({
   id: raw.id,
   status: raw.status === 'stopped_at_limit' ? 'completed' : (raw.status as Run['status']),
   startedAt: raw.started_at ?? undefined,
+  schoolName: raw.label ?? undefined,
   finishedAt: raw.finished_at ?? undefined,
   elapsedSeconds: elapsed(raw.started_at, raw.finished_at),
   counts: {
@@ -59,6 +63,7 @@ const toRun = (raw: RunResponse): Run => ({
   sitesCompleted: raw.sites_completed,
   sitesSkipped: raw.sites_skipped,
   sitesFailed: raw.sites_failed,
+  stepBudget: raw.config?.step_budget,
   sitesPending: raw.sites_pending,
   stopReason: raw.stop_reason ?? undefined,
   errorMessage: raw.error_message ?? undefined,
@@ -96,6 +101,7 @@ export const runsApi = {
         config: {
           max_spend_usd: payload.maxSpendUsd ?? null,
           force_rescan: payload.forceRescan ?? false,
+          label: payload.schoolName ?? null,
         },
       }),
     })
@@ -130,9 +136,14 @@ export const runsApi = {
   },
 
   /** Per-site status. The authoritative snapshot for resyncing after a reconnect. */
-  async getRunSites(id: string) {
+  async getRunSites(id: string): Promise<SiteRunSnapshot[]> {
     if (isMockMode()) return []
-    return fetchAllPages<Record<string, unknown>>(`/runs/${id}/sites`)
+    return fetchAllPages<SiteRunSnapshot>(`/runs/${id}/sites`)
+  },
+
+  /** Re-queues one finished site as a forced rescan. Useful after a 429. */
+  async retrySite(runId: string, siteId: string): Promise<SiteRunSnapshot> {
+    return apiFetch<SiteRunSnapshot>(`/runs/${runId}/sites/${siteId}/retry`, { method: 'POST' })
   },
 
   /**
@@ -187,6 +198,7 @@ const RUN_EVENT_TYPES = [
   'site_skipped',
   'site_completed',
   'site_failed',
+  'site_rejected',
   'run_completed',
   'run_stopped_at_limit',
   'run_cancelled',
@@ -216,6 +228,18 @@ export function applyRunEvent(run: Run, event: RunEvent): Run {
       return {
         ...run,
         spendUsd: num(p.spend_usd) ?? run.spendUsd,
+        sitesTotal: num(p.sites_total) ?? run.sitesTotal,
+        sitesCompleted: num(p.sites_completed) ?? run.sitesCompleted,
+        sitesSkipped: num(p.sites_skipped) ?? run.sitesSkipped,
+        sitesFailed: num(p.sites_failed) ?? run.sitesFailed,
+        sitesPending: num(p.sites_pending) ?? run.sitesPending,
+        counts: {
+          ...(run.counts ?? EMPTY_COUNTS),
+          peopleFound: num(p.records_found) ?? run.counts?.peopleFound ?? 0,
+          newCount: num(p.records_new) ?? run.counts?.newCount ?? 0,
+          changedCount: num(p.records_changed) ?? run.counts?.changedCount ?? 0,
+          missingCount: num(p.records_missing) ?? run.counts?.missingCount ?? 0,
+        },
         status: run.status === 'queued' ? 'running' : run.status,
       }
     case 'site_started':
@@ -274,6 +298,7 @@ export function applyRunEvent(run: Run, event: RunEvent): Run {
         feed: push({ kind: 'note', message: `Skipped: ${str(p.reason) ?? 'site unchanged since the last crawl'}` }),
       }
     case 'site_failed':
+    case 'site_rejected':
       return {
         ...run,
         errorMessage: str(p.reason),
@@ -293,6 +318,15 @@ export function applyRunEvent(run: Run, event: RunEvent): Run {
       }
       return run
   }
+}
+
+export interface SiteRunSnapshot {
+  id: string
+  site_id: string
+  domain?: string | null
+  status: string
+  error_code?: string | null
+  error_message?: string | null
 }
 
 const EMPTY_COUNTS = {

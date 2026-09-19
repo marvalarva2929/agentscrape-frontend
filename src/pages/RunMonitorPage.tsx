@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { runsApi, type SiteRunSnapshot } from '../api/runs'
 import { DirectoryDashGame } from '../components/game/DirectoryDashGame'
 import type { FeedItem, Run } from '../types/run'
 
@@ -14,13 +15,18 @@ export function RunMonitorPage({
   onBack,
   onStartGame,
   onViewResults,
+  onResume,
 }: {
   run: Run
   onBack: () => void
   onStartGame: () => void
   onViewResults?: () => void
+  onResume?: () => void
 }) {
   const [showGame, setShowGame] = useState(false)
+  const [siteRuns, setSiteRuns] = useState<SiteRunSnapshot[]>([])
+  const [retryingSiteId, setRetryingSiteId] = useState<string | null>(null)
+  const [retryError, setRetryError] = useState('')
   const finished = ['completed', 'failed', 'cancelled'].includes(run.status)
   const elapsed = useElapsed(run.startedAt, run.finishedAt, run.elapsedSeconds, finished)
 
@@ -29,6 +35,32 @@ export function RunMonitorPage({
       onStartGame()
     }
   }, [finished, onStartGame])
+
+  useEffect(() => {
+    let cancelled = false
+    void runsApi.getRunSites(run.id).then((sites) => {
+      if (!cancelled) setSiteRuns(sites)
+    }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [run.id, run.status])
+
+  const retrySite = async (site: SiteRunSnapshot) => {
+    setRetryingSiteId(site.site_id)
+    setRetryError('')
+    try {
+      await runsApi.retrySite(run.id, site.site_id)
+      setSiteRuns((current) => current.map((item) => item.site_id === site.site_id
+        ? { ...item, status: 'pending', error_code: null, error_message: null }
+        : item))
+      onResume?.()
+    } catch {
+      setRetryError('Could not queue this site for another attempt. Please try again later.')
+    } finally {
+      setRetryingSiteId(null)
+    }
+  }
+
+  const blockedSites = siteRuns.filter((site) => site.error_code === 'SITE_BLOCKED' || site.error_code === 'SITE_RATE_LIMITED')
 
   return (
     <main className="page-shell">
@@ -49,6 +81,7 @@ export function RunMonitorPage({
         <div><span>Stage</span><strong>{run.stage ?? 'queued'}</strong></div>
         <div><span>Elapsed</span><strong>{formatDuration(elapsed)}</strong></div>
         <div><span>Pages read</span><strong>{run.pagesRead ?? 0}</strong></div>
+        <div><span>Page budget</span><strong>{run.stepBudget ? `${run.pagesRead ?? 0} / ${run.stepBudget}` : 'â€”'}</strong></div>
         <div><span>People found</span><strong>{run.counts?.peopleFound ?? 0}</strong></div>
         <div><span>Sites</span><strong>{run.sitesCompleted ?? 0}/{run.sitesTotal ?? 0} complete</strong></div>
         <div><span>Skipped / failed</span><strong>{run.sitesSkipped ?? 0} / {run.sitesFailed ?? 0}</strong></div>
@@ -61,6 +94,18 @@ export function RunMonitorPage({
         </div>
         <div><span>Model spend</span><strong>{formatUsd(run.spendUsd)}</strong></div>
       </div>
+
+      {!finished && <p className="muted">This crawl ends when it reaches the page budget, runs out of worthwhile links, has 150 pages in a row with no people, or reaches a configured spend limit.</p>}
+
+      {blockedSites.map((site) => (
+        <div key={site.id} className="error-banner">
+          <span>{site.error_message ?? `Site could not be crawled (${site.domain ?? 'unknown site'}).`}</span>
+          <button className="secondary-button small-button" disabled={retryingSiteId === site.site_id} onClick={() => void retrySite(site)}>
+            {retryingSiteId === site.site_id ? 'Queuing…' : 'Try again later'}
+          </button>
+        </div>
+      ))}
+      {retryError && <div className="error-banner">{retryError}</div>}
 
       <div className="stage-bar">
         {Object.entries(stageLabels).map(([key, label]) => (

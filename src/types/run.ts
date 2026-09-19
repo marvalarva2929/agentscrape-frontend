@@ -65,4 +65,6 @@ export interface Run {
   sitesFailed?: number
   sitesPending?: number
   stopReason?: string
+  /** Per-site page ceiling; the crawler may stop earlier once useful leads end. */
+  stepBudget?: number
 }
