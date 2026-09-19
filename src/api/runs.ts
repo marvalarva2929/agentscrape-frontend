@@ -10,6 +10,7 @@ export interface StartRunRequest {
   maxSpendUsd?: number | null
   forceRescan?: boolean
   schoolName?: string
+  includeDirectory?: boolean
 }
 
 interface RunResponse {
@@ -102,6 +103,7 @@ export const runsApi = {
           max_spend_usd: payload.maxSpendUsd ?? null,
           force_rescan: payload.forceRescan ?? false,
           label: payload.schoolName ?? null,
+          modes: payload.includeDirectory ? ['crawl', 'directory'] : ['crawl'],
         },
       }),
     })

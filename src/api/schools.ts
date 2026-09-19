@@ -12,6 +12,8 @@ interface SchoolResponse {
   canonical_url: string
   people_count?: number
   last_updated?: string | null
+  directory_url?: string | null
+  directory_search_available?: boolean
 }
 
 interface ProgramResponse {
@@ -37,6 +39,8 @@ const toSchool = (raw: SchoolResponse): School => ({
   location: raw.location ?? undefined,
   peopleCount: raw.people_count ?? 0,
   lastUpdated: raw.last_updated ?? undefined,
+  directoryUrl: raw.directory_url ?? undefined,
+  directorySearchAvailable: raw.directory_search_available ?? false,
 })
 
 const toProgram = (raw: ProgramResponse): Program => ({

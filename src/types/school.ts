@@ -6,4 +6,6 @@ export interface School {
   location?: string
   peopleCount?: number
   lastUpdated?: string
+  directoryUrl?: string
+  directorySearchAvailable?: boolean
 }
