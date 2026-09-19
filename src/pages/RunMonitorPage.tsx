@@ -16,17 +16,21 @@ export function RunMonitorPage({
   onStartGame,
   onViewResults,
   onResume,
+  onStop,
 }: {
   run: Run
   onBack: () => void
   onStartGame: () => void
   onViewResults?: () => void
   onResume?: () => void
+  onStop?: () => Promise<void>
 }) {
   const [showGame, setShowGame] = useState(false)
   const [siteRuns, setSiteRuns] = useState<SiteRunSnapshot[]>([])
   const [retryingSiteId, setRetryingSiteId] = useState<string | null>(null)
   const [retryError, setRetryError] = useState('')
+  const [stopping, setStopping] = useState(false)
+  const [stopError, setStopError] = useState('')
   const finished = ['completed', 'failed', 'cancelled'].includes(run.status)
   const elapsed = useElapsed(run.startedAt, run.finishedAt, run.elapsedSeconds, finished)
 
@@ -60,6 +64,19 @@ export function RunMonitorPage({
     }
   }
 
+  const stopCrawl = async () => {
+    if (!onStop) return
+    setStopping(true)
+    setStopError('')
+    try {
+      await onStop()
+    } catch {
+      setStopError('Could not stop the crawl. Please try again.')
+    } finally {
+      setStopping(false)
+    }
+  }
+
   const blockedSites = siteRuns.filter((site) => site.error_code === 'SITE_BLOCKED' || site.error_code === 'SITE_RATE_LIMITED')
 
   return (
@@ -71,6 +88,7 @@ export function RunMonitorPage({
         </div>
         <div className="monitor-actions">
           <button className="secondary-button" onClick={() => setShowGame(true)}>Play While You Wait</button>
+          {!finished && <button className="secondary-button" disabled={stopping} onClick={() => void stopCrawl()}>{stopping ? 'Stopping…' : 'Stop Crawl'}</button>}
           <button className="secondary-button" onClick={onBack}>{finished ? 'Back' : 'Leave'}</button>
         </div>
       </div>
@@ -106,6 +124,7 @@ export function RunMonitorPage({
         </div>
       ))}
       {retryError && <div className="error-banner">{retryError}</div>}
+      {stopError && <div className="error-banner">{stopError}</div>}
 
       <div className="stage-bar">
         {Object.entries(stageLabels).map(([key, label]) => (
