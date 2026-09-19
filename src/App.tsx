@@ -21,7 +21,7 @@ import { downloadWorkbook } from './utils/excel'
 
 export type Screen = 'main' | 'person' | 'run-monitor' | 'crawl' | 'history' | 'game'
 type WizardDraft = { schoolId: string; schoolUrl: string; maxSpendUsd: string; forceRescan: boolean }
-const createWizardDraft = (schoolId = '', schoolUrl = ''): WizardDraft => ({ schoolId, schoolUrl, maxSpendUsd: '', forceRescan: false })
+const createWizardDraft = (schoolId = '', schoolUrl = ''): WizardDraft => ({ schoolId, schoolUrl, maxSpendUsd: '10', forceRescan: false })
 const terminal = (status?: string) => ['completed', 'failed', 'cancelled', 'stopped_at_limit'].includes(status ?? '')
 
 function App() {
