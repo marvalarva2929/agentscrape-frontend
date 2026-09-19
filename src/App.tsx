@@ -20,8 +20,19 @@ import type { Run } from './types/run'
 import { downloadWorkbook } from './utils/excel'
 
 export type Screen = 'main' | 'person' | 'run-monitor' | 'crawl' | 'history' | 'game'
-type WizardDraft = { schoolId: string; schoolUrl: string; maxSpendUsd: string; forceRescan: boolean; includeDirectory: boolean }
-const createWizardDraft = (schoolId = '', schoolUrl = ''): WizardDraft => ({ schoolId, schoolUrl, maxSpendUsd: '10', forceRescan: false, includeDirectory: false })
+type WizardDraft = { schoolId: string; schoolUrl: string; maxSpendUsd: string; maxPeople: string; maxTrainees: string; maxEmails: string; forceRescan: boolean; includeDirectory: boolean }
+const createWizardDraft = (schoolId = '', schoolUrl = ''): WizardDraft => ({ schoolId, schoolUrl, maxSpendUsd: '10', maxPeople: '', maxTrainees: '', maxEmails: '', forceRescan: false, includeDirectory: false })
+/** A whole-number limit from a form field; blank means no limit, anything else invalid. */
+const parseLimit = (value: string): number | null | undefined => {
+  if (!value.trim()) return null
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined
+}
+const LIMIT_FIELDS = [
+  { key: 'maxPeople', label: 'People', hint: 'Everyone collected' },
+  { key: 'maxTrainees', label: 'Residents & fellows', hint: 'Trainees collected' },
+  { key: 'maxEmails', label: 'With an email', hint: 'People with an address' },
+] as const
 const terminal = (status?: string) => ['completed', 'failed', 'cancelled', 'stopped_at_limit'].includes(status ?? '')
 
 function App() {
@@ -149,12 +160,16 @@ function App() {
     if (!schoolUrl) { setWizardError('Choose a school or enter a school URL.'); return }
     const budget = wizardDraft.maxSpendUsd ? Number(wizardDraft.maxSpendUsd) : null
     if (budget !== null && (!Number.isFinite(budget) || budget <= 0)) { setWizardError('Budget must be greater than zero.'); return }
+    const maxPeople = parseLimit(wizardDraft.maxPeople)
+    const maxTrainees = parseLimit(wizardDraft.maxTrainees)
+    const maxEmails = parseLimit(wizardDraft.maxEmails)
+    if (maxPeople === undefined || maxTrainees === undefined || maxEmails === undefined) { setWizardError('Limits must be whole numbers above zero, or left blank for no limit.'); return }
     try {
       setWizardError('')
       const school = schools.find((item) => item.id === wizardDraft.schoolId)
       const schoolName = school?.name ?? hostOf(schoolUrl)
       const includeDirectory = wizardDraft.includeDirectory && Boolean(school?.directoryUrl)
-      const job = await runsApi.startRun({ schoolId: wizardDraft.schoolId, schoolUrl, schoolName, maxSpendUsd: budget, forceRescan: wizardDraft.forceRescan, includeDirectory })
+      const job = await runsApi.startRun({ schoolId: wizardDraft.schoolId, schoolUrl, schoolName, maxSpendUsd: budget, maxPeople, maxTrainees, maxEmails, forceRescan: wizardDraft.forceRescan, includeDirectory })
       setRun({ ...job, schoolId: wizardDraft.schoolId || undefined, schoolName, runType: includeDirectory ? 'New Crawl + Directory Search' : 'New Crawl' })
       setScreen('run-monitor'); watchRun(job.id)
     } catch (caught) {
@@ -201,8 +216,9 @@ function App() {
           <div className="field-group"><label className="input-label">School URL</label><input value={wizardDraft.schoolUrl} onChange={(event) => setWizardDraft((current) => ({ ...current, schoolUrl: event.target.value, includeDirectory: false }))} placeholder="https://school.edu" /></div>
           {crawlSchool?.directoryUrl && <div className="field-group"><label className="input-label">Optional operation</label><label className="checkbox-row"><input type="checkbox" checked={wizardDraft.includeDirectory} onChange={(event) => setWizardDraft((current) => ({ ...current, includeDirectory: event.target.checked }))} /><span>Also search the school directory</span></label></div>}
           <div className="field-group"><label className="input-label">Budget (USD)</label><input type="number" min={1} value={wizardDraft.maxSpendUsd} onChange={(event) => setWizardDraft((current) => ({ ...current, maxSpendUsd: event.target.value }))} placeholder="10" /></div>
+          <div className="field-group"><span className="input-label">Stop crawling after</span><div className="limit-grid">{LIMIT_FIELDS.map((field) => <label key={field.key} className="limit-field" htmlFor={`limit-${field.key}`}><span>{field.label}</span><input id={`limit-${field.key}`} type="number" min={1} step={1} inputMode="numeric" value={wizardDraft[field.key]} onChange={(event) => setWizardDraft((current) => ({ ...current, [field.key]: event.target.value }))} placeholder="No limit" /><small>{field.hint}</small></label>)}</div><small>Whichever limit is reached first ends the crawl. A directory search still runs on the people already found; the budget stops everything.</small></div>
           <label className="checkbox-row"><input type="checkbox" checked={wizardDraft.forceRescan} onChange={(event) => setWizardDraft((current) => ({ ...current, forceRescan: event.target.checked }))} /><span>Force rescan</span></label>
-          <div className="review-box"><div className="review-row"><span>Operation</span><strong>{wizardDraft.includeDirectory && crawlSchool?.directoryUrl ? 'Crawl + Directory Search' : 'Crawl'}</strong></div><div className="review-row"><span>School</span><strong>{crawlSchool?.name ?? wizardDraft.schoolUrl ?? '—'}</strong></div></div>
+          <div className="review-box"><div className="review-row"><span>Operation</span><strong>{wizardDraft.includeDirectory && crawlSchool?.directoryUrl ? 'Crawl + Directory Search' : 'Crawl'}</strong></div><div className="review-row"><span>School</span><strong>{crawlSchool?.name ?? wizardDraft.schoolUrl ?? '—'}</strong></div><div className="review-row"><span>Stops at</span><strong>{[wizardDraft.maxSpendUsd && `$${wizardDraft.maxSpendUsd}`, wizardDraft.maxPeople && `${wizardDraft.maxPeople} people`, wizardDraft.maxTrainees && `${wizardDraft.maxTrainees} residents & fellows`, wizardDraft.maxEmails && `${wizardDraft.maxEmails} emails`].filter(Boolean).join(' · ') || 'No limit'}</strong></div></div>
           {wizardError && <div className="error-banner">{wizardError}</div>}
           <div className="modal-actions"><button className="secondary-button" onClick={() => setScreen('main')}>Cancel</button><button className="primary-button" onClick={() => void handleSubmitWizard()}>Start Crawl</button></div>
         </section>

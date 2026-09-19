@@ -42,6 +42,10 @@ export interface Run {
   /** Live spend, metered as the run happens rather than totalled at the end. */
   spendUsd?: number
   maxSpendUsd?: number
+  /** Crawl limits: stop once this many people / residents & fellows / emails are collected. */
+  maxPeople?: number
+  maxTrainees?: number
+  maxEmails?: number
   /**
    * The run hit its budget and wound down cleanly. Partial results are valid
    * results, so this is not a failure state.

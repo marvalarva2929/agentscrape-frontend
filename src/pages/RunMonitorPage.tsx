@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { runsApi, type SiteRunSnapshot } from '../api/runs'
+import { runStatusLabel, runsApi, type SiteRunSnapshot } from '../api/runs'
 import { DirectoryDashGame } from '../components/game/DirectoryDashGame'
 import type { FeedItem, Run } from '../types/run'
 
@@ -94,7 +94,7 @@ export function RunMonitorPage({
       </div>
 
       <div className="progress-strip">
-        <div><span>Status</span><strong>{run.stoppedAtLimit ? 'stopped at limit' : run.status}</strong></div>
+        <div><span>Status</span><strong>{runStatusLabel(run)}</strong></div>
         <div><span>Operation</span><strong>{run.runType ?? 'Crawl'}</strong></div>
         <div><span>Stage</span><strong>{run.stage ?? 'queued'}</strong></div>
         <div><span>Elapsed</span><strong>{formatDuration(elapsed)}</strong></div>

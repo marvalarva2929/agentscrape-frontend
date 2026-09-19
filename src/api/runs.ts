@@ -6,8 +6,14 @@ export interface StartRunRequest {
   /** The school to crawl. A run covers a whole institution. */
   schoolUrl?: string
   schoolId?: string
-  /** The one control the user sets: a budget in dollars. */
+  /** Stop everything once estimated model spend reaches this, in dollars. */
   maxSpendUsd?: number | null
+  /** Stop crawling once this many people have been collected. */
+  maxPeople?: number | null
+  /** Stop crawling once this many residents and fellows have been collected. */
+  maxTrainees?: number | null
+  /** Stop crawling once this many people with an email have been collected. */
+  maxEmails?: number | null
   forceRescan?: boolean
   schoolName?: string
   includeDirectory?: boolean
@@ -31,6 +37,9 @@ interface RunResponse {
   records_missing: number
   spend_usd: number
   max_spend_usd?: number | null
+  max_records?: number | null
+  max_trainees?: number | null
+  max_emails?: number | null
   created_at: string
   started_at?: string | null
   finished_at?: string | null
@@ -60,6 +69,9 @@ const toRun = (raw: RunResponse): Run => ({
   },
   spendUsd: raw.spend_usd,
   maxSpendUsd: raw.max_spend_usd ?? undefined,
+  maxPeople: raw.max_records ?? undefined,
+  maxTrainees: raw.max_trainees ?? undefined,
+  maxEmails: raw.max_emails ?? undefined,
   sitesTotal: raw.sites_total,
   sitesCompleted: raw.sites_completed,
   sitesSkipped: raw.sites_skipped,
@@ -68,9 +80,24 @@ const toRun = (raw: RunResponse): Run => ({
   sitesPending: raw.sites_pending,
   stopReason: raw.stop_reason ?? undefined,
   errorMessage: raw.error_message ?? undefined,
-  // A run that hit its budget is finished with valid partial results, not failed.
-  stoppedAtLimit: raw.stop_reason === 'max_spend' || raw.stop_reason === 'max_records',
+  // A run that hit one of its limits is finished with valid partial results, not failed.
+  stoppedAtLimit: LIMIT_REASONS.has(raw.stop_reason ?? ''),
 })
+
+const LIMIT_REASONS = new Set(['max_spend', 'max_records', 'max_trainees', 'max_emails'])
+
+const LIMIT_LABELS: Record<string, string> = {
+  max_spend: 'stopped at budget',
+  max_records: 'stopped at people limit',
+  max_trainees: 'stopped at residents & fellows limit',
+  max_emails: 'stopped at email limit',
+}
+
+/** The status to show for a run, naming the limit it stopped at. */
+export function runStatusLabel(run: Run): string {
+  if (run.stoppedAtLimit) return LIMIT_LABELS[run.stopReason ?? ''] ?? 'stopped at limit'
+  return run.status
+}
 
 export const runsApi = {
   async startRun(payload: StartRunRequest): Promise<Run> {
@@ -101,6 +128,9 @@ export const runsApi = {
         sites: payload.schoolUrl ? [payload.schoolUrl] : [],
         config: {
           max_spend_usd: payload.maxSpendUsd ?? null,
+          max_records: payload.maxPeople ?? null,
+          max_trainees: payload.maxTrainees ?? null,
+          max_emails: payload.maxEmails ?? null,
           force_rescan: payload.forceRescan ?? false,
           label: payload.schoolName ?? null,
           modes: payload.includeDirectory ? ['crawl', 'directory'] : ['crawl'],
