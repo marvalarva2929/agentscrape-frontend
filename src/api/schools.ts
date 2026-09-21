@@ -57,14 +57,20 @@ const toProgram = (raw: ProgramResponse): Program => ({
   directoryUrl: raw.directory_url ?? undefined,
 })
 
+/** Alphabetical by name, so "St. Mary's" and " St mary" sort together. */
+const byName = (a: School, b: School) =>
+  a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })
+
 export const schoolsApi = {
   async listSchools(): Promise<School[]> {
     if (isMockMode()) {
-      return Promise.resolve(mockSchools)
+      return [...mockSchools].sort(byName)
     }
 
+    // The API pages in insertion order, which puts whatever was crawled first
+    // at the top of every school list and search.
     const rows = await fetchAllPages<SchoolResponse>('/schools')
-    return rows.map(toSchool)
+    return rows.map(toSchool).sort(byName)
   },
 
   async getSchool(id: string): Promise<School> {

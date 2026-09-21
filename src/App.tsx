@@ -3,7 +3,7 @@ import './App.css'
 import { authApi } from './api/auth'
 import { schoolsApi } from './api/schools'
 import { peopleApi } from './api/people'
-import { applyRunEvent, runsApi, TERMINAL_EVENTS } from './api/runs'
+import { applyRunEvent, mergeRun, rememberRun, restoreRun, runsApi, TERMINAL_EVENTS } from './api/runs'
 import { ApiError } from './api/client'
 import { AppShell } from './components/layout/AppShell'
 import { BackendUnavailableState } from './components/common/BackendUnavailableState'
@@ -13,6 +13,7 @@ import { PastCrawlsPage } from './pages/PastCrawlsPage'
 import { PersonPage } from './pages/PersonPage'
 import { RunMonitorPage } from './pages/RunMonitorPage'
 import { DirectoryDashGame } from './components/game/DirectoryDashGame'
+import { SchoolPicker } from './components/schools/SchoolPicker'
 import type { School } from './types/school'
 import type { Program } from './types/program'
 import type { Person, PersonStatus } from './types/person'
@@ -55,6 +56,7 @@ function App() {
   const [trainingFilter, setTrainingFilter] = useState<'all' | 'Resident' | 'Fellow'>('all')
   const [statusFilter, setStatusFilter] = useState<'all' | PersonStatus>('all')
   const stopWatching = useRef<(() => void) | null>(null)
+  const watchingRunId = useRef<string | null>(null)
 
   const selectedSchool = useMemo(() => schools.find((school) => school.id === selectedSchoolId) ?? null, [schools, selectedSchoolId])
   const selectedPerson = useMemo(() => people.find((person) => person.id === selectedPersonId) ?? null, [people, selectedPersonId])
@@ -127,25 +129,63 @@ function App() {
     if (!run) return
     await runsApi.cancelRun(run.id)
     const latest = await runsApi.getRun(run.id)
-    setRun((current) => ({ ...(current ?? latest), ...latest, progress: 100 }))
+    setRun((current) => {
+      const next = { ...mergeRun(current, latest), progress: 100 }
+      rememberRun(next)
+      return next
+    })
   }
   const selectSchool = (id: string) => { setSelectedSchoolId(id); setSelectedProgramId(''); setQuery(''); setDataError(''); syncQuery(id, '') }
 
+  /**
+   * Follow a run's event stream. The subscription lives here rather than in the
+   * monitor page so that leaving the page does not end it; returning to an
+   * already-watched run re-uses the open stream instead of restarting it.
+   */
   const watchRun = (runId: string) => {
+    if (watchingRunId.current === runId && stopWatching.current) return
     stopWatching.current?.()
     let closed = false
     const refresh = async () => {
       const latest = await runsApi.getRun(runId)
-      setRun((current) => ({ ...(current ?? latest), ...latest, progress: terminal(latest.status) ? 100 : current?.progress }))
+      setRun((current) => {
+        const next = mergeRun(current, latest)
+        const settled = terminal(latest.status) ? { ...next, progress: 100 } : next
+        rememberRun(settled)
+        return settled
+      })
       if (terminal(latest.status)) cleanup()
     }
     const unsubscribe = runsApi.subscribeToRun(runId, (event) => {
-      setRun((current) => current ? applyRunEvent(current, event) : current)
+      setRun((current) => {
+        if (!current) return current
+        const next = applyRunEvent(current, event)
+        rememberRun(next)
+        return next
+      })
       if (TERMINAL_EVENTS.has(event.type)) void refresh()
     })
     const poll = window.setInterval(() => { void refresh().catch(() => undefined) }, 5000)
-    const cleanup = () => { if (closed) return; closed = true; window.clearInterval(poll); unsubscribe(); if (stopWatching.current === cleanup) stopWatching.current = null }
+    const cleanup = () => {
+      if (closed) return
+      closed = true
+      window.clearInterval(poll)
+      unsubscribe()
+      if (watchingRunId.current === runId) watchingRunId.current = null
+      if (stopWatching.current === cleanup) stopWatching.current = null
+    }
+    watchingRunId.current = runId
     stopWatching.current = cleanup
+  }
+
+  const openRun = async (runId: string) => {
+    const loaded = await runsApi.getRun(runId)
+    // The feed and the per-page tallies are not in the row, so a run reopened
+    // from history is rebuilt from what the stream last showed for it.
+    const restored = restoreRun(loaded)
+    setRun((current) => mergeRun(current, restored))
+    setScreen('run-monitor')
+    if (!terminal(loaded.status)) watchRun(runId)
   }
 
   const navigateToCrawl = async () => {
@@ -170,7 +210,8 @@ function App() {
       const schoolName = school?.name ?? hostOf(schoolUrl)
       const includeDirectory = wizardDraft.includeDirectory && Boolean(school?.directoryUrl)
       const job = await runsApi.startRun({ schoolId: wizardDraft.schoolId, schoolUrl, schoolName, maxSpendUsd: budget, maxPeople, maxTrainees, maxEmails, forceRescan: wizardDraft.forceRescan, includeDirectory })
-      setRun({ ...job, schoolId: wizardDraft.schoolId || undefined, schoolName, runType: includeDirectory ? 'New Crawl + Directory Search' : 'New Crawl' })
+      const started: Run = { ...job, schoolId: wizardDraft.schoolId || undefined, schoolName, runType: includeDirectory ? 'New Crawl + Directory Search' : 'New Crawl' }
+      setRun(started); rememberRun(started)
       setScreen('run-monitor'); watchRun(job.id)
     } catch (caught) {
       // Anyone signed in can start a crawl; show what the backend said went
@@ -205,7 +246,7 @@ function App() {
       {selectedSchoolId && selectedSchool && <><div className="summary-row"><div className="summary-card"><div className="summary-label">People shown</div><div className="summary-value">{filteredPeople.length}</div></div><div className="summary-card"><div className="summary-label">Residents</div><div className="summary-value">{filteredPeople.filter((person) => person.trainingType === 'Resident').length}</div></div><div className="summary-card"><div className="summary-label">Fellows</div><div className="summary-value">{filteredPeople.filter((person) => person.trainingType === 'Fellow').length}</div></div></div>
         <div className="table-panel"><div className="table-controls"><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name or email" /><select value={trainingFilter} onChange={(event) => setTrainingFilter(event.target.value as 'all' | 'Resident' | 'Fellow')}><option value="all">All roles</option><option value="Resident">Resident</option><option value="Fellow">Fellow</option></select><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | PersonStatus)}><option value="all">All statuses</option><option value="new">New</option><option value="active">Active</option><option value="stale">Stale</option></select><button className="secondary-button" onClick={exportPeople} disabled={exporting}>{exporting ? 'Preparing Excel…' : 'Download Excel'}</button></div><div className="table-wrap"><table><thead><tr><th>Name</th><th>Role</th><th>Position</th><th>Year</th><th>Specialty</th><th>Email</th><th>Status</th><th>Last seen</th></tr></thead><tbody>{filteredPeople.map((person) => <tr key={person.id} className="clickable-row" onClick={() => { setSelectedPersonId(person.id); setScreen('person') }}><td>{person.name}</td><td>{person.trainingType ?? person.category ?? '—'}</td><td>{person.position ?? '—'}</td><td>{person.year ?? '—'}</td><td>{person.specialty ?? '—'}</td><td>{person.email ?? '—'}</td><td><span className={`status-badge ${person.status}`}>{person.status}</span></td><td>{formatDate(person.lastVerified)}</td></tr>)}</tbody></table></div></div></>}
     </main>}
-    {screen === 'history' && <PastCrawlsPage activeRun={run} onBack={() => setScreen('main')} onOpenRun={(id) => { void runsApi.getRun(id).then((loaded) => { setRun(loaded); setScreen('run-monitor'); if (!terminal(loaded.status)) watchRun(id) }).catch(() => setDataError('Could not open crawl details.')) }} />}
+    {screen === 'history' && <PastCrawlsPage activeRun={run} onBack={() => setScreen('main')} onOpenRun={(id) => { void openRun(id).catch(() => setDataError('Could not open crawl details.')) }} />}
     {screen === 'person' && selectedPerson && <PersonPage school={selectedSchool ?? undefined} person={selectedPerson} onBack={() => setScreen('main')} />}
     {screen === 'game' && <DirectoryDashGame schoolName={selectedSchool?.name ?? 'Directory Dash'} status="ready" peopleFound={0} emailsFound={0} runFinished={false} onClose={() => setScreen('main')} />}
     {screen === 'run-monitor' && run && <RunMonitorPage run={run} onBack={() => setScreen('main')} onViewResults={() => { setScreen('main'); if (run.schoolId) selectSchool(run.schoolId) }} onStartGame={() => undefined} onResume={() => watchRun(run.id)} onStop={stopRun} />}
@@ -214,7 +255,7 @@ function App() {
       return <main className="page-shell narrow-shell">
         <div className="page-header-row"><div><div className="breadcrumb">Run Crawl</div><h2>Run Crawl</h2></div></div>
         <section className="panel-block">
-          <div className="field-group"><label className="input-label">School</label><select value={wizardDraft.schoolId} onChange={(event) => { const school = schools.find((item) => item.id === event.target.value); setWizardDraft((current) => ({ ...current, schoolId: event.target.value, schoolUrl: school?.canonicalUrl ?? '', includeDirectory: false })) }}><option value="">New school — enter URL below</option>{schools.map((school) => <option key={school.id} value={school.id}>{school.name}</option>)}</select></div>
+          <div className="field-group"><label className="input-label">School</label><SchoolPicker schools={schools} value={wizardDraft.schoolId} onSelect={(school) => setWizardDraft((current) => ({ ...current, schoolId: school.id, schoolUrl: school.canonicalUrl ?? '', includeDirectory: false }))} onClear={() => setWizardDraft((current) => ({ ...current, schoolId: '', schoolUrl: '', includeDirectory: false }))} /></div>
           <div className="field-group"><label className="input-label">School URL</label><input value={wizardDraft.schoolUrl} onChange={(event) => setWizardDraft((current) => ({ ...current, schoolUrl: event.target.value, includeDirectory: false }))} placeholder="https://school.edu" /></div>
           {crawlSchool?.directoryUrl && <div className="field-group"><label className="input-label">Optional operation</label><label className="checkbox-row"><input type="checkbox" checked={wizardDraft.includeDirectory} onChange={(event) => setWizardDraft((current) => ({ ...current, includeDirectory: event.target.checked }))} /><span>Also search the school directory</span></label></div>}
           <div className="field-group"><label className="input-label">Budget (USD)</label><input type="number" min={1} value={wizardDraft.maxSpendUsd} onChange={(event) => setWizardDraft((current) => ({ ...current, maxSpendUsd: event.target.value }))} placeholder="10" /></div>

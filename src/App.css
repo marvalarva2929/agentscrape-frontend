@@ -1347,3 +1347,89 @@ td {
   font-size: 0.74rem;
   font-weight: 400;
 }
+
+/* Type-to-find school picker in the crawl wizard. */
+.school-picker {
+  position: relative;
+}
+
+.school-picker input {
+  width: 100%;
+  padding: 0.8rem 2.2rem 0.8rem 0.95rem;
+  border-radius: 0.8rem;
+  border: 1px solid #ced9e1;
+  background: white;
+  color: #102130;
+}
+
+.school-picker-clear {
+  position: absolute;
+  top: 50%;
+  right: 0.6rem;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: #5d6f7c;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.2rem 0.35rem;
+}
+
+.school-picker-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 0.3rem;
+  list-style: none;
+  max-height: 17rem;
+  overflow-y: auto;
+  background: white;
+  border: 1px solid #ced9e1;
+  border-radius: 0.8rem;
+  box-shadow: 0 12px 28px rgba(16, 33, 48, 0.14);
+}
+
+.school-picker-option {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.6rem;
+  cursor: pointer;
+}
+
+.school-picker-option.active {
+  background: #eef4f9;
+}
+
+.school-picker-option.selected {
+  background: #e2edf6;
+}
+
+.school-picker-option strong {
+  font-size: 0.92rem;
+  color: #102130;
+}
+
+.school-picker-option span {
+  font-size: 0.76rem;
+  color: #5d6f7c;
+}
+
+.school-picker-option.new-school {
+  font-size: 0.85rem;
+  color: #35506a;
+  font-weight: 600;
+  border-bottom: 1px solid #e6edf3;
+  border-radius: 0.6rem 0.6rem 0 0;
+}
+
+.school-picker-empty {
+  padding: 0.6rem 0.7rem;
+  font-size: 0.8rem;
+  color: #5d6f7c;
+}

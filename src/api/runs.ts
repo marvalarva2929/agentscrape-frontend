@@ -259,7 +259,10 @@ export function applyRunEvent(run: Run, event: RunEvent): Run {
     case 'run_progress':
       return {
         ...run,
-        spendUsd: num(p.spend_usd) ?? run.spendUsd,
+        // The run row only takes spend and people when a site ends, and the
+        // snapshot frame sent on every (re)connect reads that row, so taking
+        // these verbatim drops a live crawl back to zero. Both only climb.
+        spendUsd: Math.max(num(p.spend_usd) ?? 0, run.spendUsd ?? 0),
         sitesTotal: num(p.sites_total) ?? run.sitesTotal,
         sitesCompleted: num(p.sites_completed) ?? run.sitesCompleted,
         sitesSkipped: num(p.sites_skipped) ?? run.sitesSkipped,
@@ -267,7 +270,7 @@ export function applyRunEvent(run: Run, event: RunEvent): Run {
         sitesPending: num(p.sites_pending) ?? run.sitesPending,
         counts: {
           ...(run.counts ?? EMPTY_COUNTS),
-          peopleFound: num(p.records_found) ?? run.counts?.peopleFound ?? 0,
+          peopleFound: Math.max(num(p.records_found) ?? 0, run.counts?.peopleFound ?? 0),
           newCount: num(p.records_new) ?? run.counts?.newCount ?? 0,
           changedCount: num(p.records_changed) ?? run.counts?.changedCount ?? 0,
           missingCount: num(p.records_missing) ?? run.counts?.missingCount ?? 0,
@@ -349,6 +352,157 @@ export function applyRunEvent(run: Run, event: RunEvent): Run {
         }
       }
       return run
+  }
+}
+
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
+
+const withoutUndefined = <T extends object>(value: T): Partial<T> =>
+  Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as Partial<T>
+
+/**
+ * Fold a freshly fetched run row into what the live stream has already shown.
+ *
+ * The row is authoritative for status, but spend and people are only written to
+ * it when a site finishes: taking them verbatim mid-crawl resets the monitor's
+ * numbers to zero on every poll, which is what made the spend figure flash. The
+ * feed and the per-page tallies exist only in the stream, so the row must never
+ * be allowed to blank them.
+ */
+export function mergeRun(current: Run | null | undefined, latest: Run): Run {
+  if (!current || current.id !== latest.id) return latest
+  const finished = TERMINAL_STATUSES.has(latest.status)
+  const merged: Run = { ...current, ...withoutUndefined(latest) }
+  return {
+    ...merged,
+    // A row read between "created" and "started" still says queued; the stream
+    // has already proved otherwise.
+    status: current.status === 'running' && latest.status === 'queued' ? 'running' : merged.status,
+    stage: finished ? (latest.stage ?? current.stage ?? 'complete') : (current.stage ?? latest.stage),
+    feed: current.feed?.length ? current.feed : latest.feed,
+    pagesRead: Math.max(current.pagesRead ?? 0, latest.pagesRead ?? 0) || undefined,
+    traineesFound: Math.max(current.traineesFound ?? 0, latest.traineesFound ?? 0) || undefined,
+    programsTotal: current.programsTotal ?? latest.programsTotal,
+    programsCovered: current.programsCovered ?? latest.programsCovered,
+    // Spend only ever climbs within a run, so the larger of the two is the
+    // later one whichever source it came from.
+    spendUsd: Math.max(current.spendUsd ?? 0, latest.spendUsd ?? 0),
+    counts: {
+      ...(current.counts ?? EMPTY_COUNTS),
+      ...withoutUndefined(latest.counts ?? {}),
+      // The stream counts a person once per page they appear on, so once the
+      // run is over the deduplicated row is the honest number.
+      peopleFound: finished
+        ? (latest.counts?.peopleFound ?? current.counts?.peopleFound ?? 0)
+        : Math.max(current.counts?.peopleFound ?? 0, latest.counts?.peopleFound ?? 0),
+    },
+  }
+}
+
+/**
+ * The live state of a run, kept per run id so leaving the monitor and coming
+ * back — or reloading the tab — does not start from an empty feed. Only the
+ * stream produces this; nothing on the server can replay it.
+ */
+interface LiveRunState {
+  feed?: FeedItem[]
+  stage?: Run['stage']
+  progress?: number
+  pagesRead?: number
+  traineesFound?: number
+  programsTotal?: number
+  programsCovered?: number
+  spendUsd?: number
+  peopleFound?: number
+  schoolId?: string
+  schoolName?: string
+  runType?: Run['runType']
+  savedAt: string
+}
+
+const LIVE_STATE_PREFIX = 'agentscrape.live-run.'
+const LIVE_STATE_MAX_AGE_MS = 12 * 60 * 60 * 1000
+
+const liveStore = (): Storage | null => {
+  try {
+    return window.sessionStorage
+  } catch {
+    // Blocked storage costs the feed on the next visit and nothing else.
+    return null
+  }
+}
+
+/** Save the stream-only parts of a run. Called on every event. */
+export function rememberRun(run: Run): void {
+  const store = liveStore()
+  if (!store) return
+  const state: LiveRunState = {
+    feed: run.feed?.slice(0, FEED_LIMIT),
+    stage: run.stage,
+    progress: run.progress,
+    pagesRead: run.pagesRead,
+    traineesFound: run.traineesFound,
+    programsTotal: run.programsTotal,
+    programsCovered: run.programsCovered,
+    spendUsd: run.spendUsd,
+    peopleFound: run.counts?.peopleFound,
+    schoolId: run.schoolId,
+    schoolName: run.schoolName,
+    runType: run.runType,
+    savedAt: new Date().toISOString(),
+  }
+  try {
+    store.setItem(LIVE_STATE_PREFIX + run.id, JSON.stringify(state))
+  } catch {
+    pruneLiveRuns(store)
+    try {
+      store.setItem(LIVE_STATE_PREFIX + run.id, JSON.stringify(state))
+    } catch {
+      /* out of room: the monitor still works, it just starts from the row */
+    }
+  }
+}
+
+/** Put a run row back together with whatever the stream last showed for it. */
+export function restoreRun(run: Run): Run {
+  const store = liveStore()
+  if (!store) return run
+  let state: LiveRunState | null = null
+  try {
+    const raw = store.getItem(LIVE_STATE_PREFIX + run.id)
+    state = raw ? (JSON.parse(raw) as LiveRunState) : null
+  } catch {
+    state = null
+  }
+  if (!state) return run
+  const remembered: Run = {
+    ...run,
+    feed: state.feed,
+    stage: state.stage,
+    progress: state.progress,
+    pagesRead: state.pagesRead,
+    traineesFound: state.traineesFound,
+    programsTotal: state.programsTotal,
+    programsCovered: state.programsCovered,
+    spendUsd: state.spendUsd,
+    schoolId: run.schoolId ?? state.schoolId,
+    schoolName: run.schoolName ?? state.schoolName,
+    runType: run.runType ?? state.runType,
+    counts: { ...(run.counts ?? EMPTY_COUNTS), peopleFound: state.peopleFound ?? run.counts?.peopleFound ?? 0 },
+  }
+  return mergeRun(remembered, run)
+}
+
+function pruneLiveRuns(store: Storage): void {
+  const cutoff = Date.now() - LIVE_STATE_MAX_AGE_MS
+  for (const key of Object.keys(store)) {
+    if (!key.startsWith(LIVE_STATE_PREFIX)) continue
+    try {
+      const saved = Date.parse((JSON.parse(store.getItem(key) ?? '{}') as LiveRunState).savedAt ?? '')
+      if (!Number.isFinite(saved) || saved < cutoff) store.removeItem(key)
+    } catch {
+      store.removeItem(key)
+    }
   }
 }
 

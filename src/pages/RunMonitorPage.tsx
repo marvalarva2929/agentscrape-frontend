@@ -40,6 +40,15 @@ export function RunMonitorPage({
     }
   }, [finished, onStartGame])
 
+  // Coming back to a crawl that is still going: make sure something is still
+  // listening, so the feed keeps filling and the run reads as live again.
+  useEffect(() => {
+    if (!finished) onResume?.()
+    // Mount only: re-running this on every render would re-check the stream
+    // more often than it can change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     void runsApi.getRunSites(run.id).then((sites) => {
