@@ -57,7 +57,7 @@ export const submissionsApi = {
       method: 'POST',
       body: JSON.stringify({
         max_spend_usd: options.maxSpendUsd ?? null,
-        concurrency: options.concurrency ?? 4,
+        concurrency: options.concurrency ?? 1,
         force_rescan: options.forceRescan ?? false,
       }),
     })

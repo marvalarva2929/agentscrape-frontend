@@ -4,7 +4,7 @@ import { authApi } from './api/auth'
 import { schoolsApi } from './api/schools'
 import { programsApi } from './api/programs'
 import { peopleApi } from './api/people'
-import { runsApi } from './api/runs'
+import { applyRunEvent, runsApi } from './api/runs'
 import { AppShell } from './components/layout/AppShell'
 import { BackendUnavailableState } from './components/common/BackendUnavailableState'
 import { LoadingState } from './components/common/LoadingState'
@@ -276,15 +276,9 @@ function App() {
     setRun(job)
     setScreen('run-monitor')
 
-    const unsubscribe = runsApi.subscribeToRun(job.id, (event) => {
-      if (event.run) {
-        setRun(event.run)
-      }
+    runsApi.subscribeToRun(job.id, (event) => {
+      setRun((current) => current ? applyRunEvent(current, event) : current)
     })
-
-    if (typeof unsubscribe === 'function') {
-      window.setTimeout(unsubscribe, 4000)
-    }
   }
 
   const handleViewResults = () => {
@@ -511,7 +505,6 @@ function App() {
             setScreen('main')
           }}
           onViewResults={handleViewResults}
-          onStartGame={() => undefined}
         />
       )}
 

@@ -1,5 +1,5 @@
 import { apiFetch, fetchAllPages, getApiBaseUrl, isMockMode, tokenStore } from './client'
-import type { Run } from '../types/run'
+import type { AgentActivity, Run } from '../types/run'
 import { mockRunStream, mockRuns } from '../mocks/runs'
 
 export interface StartRunRequest {
@@ -54,6 +54,7 @@ const toRun = (raw: RunResponse): Run => ({
     missingCount: raw.records_missing,
   },
   spendUsd: raw.spend_usd,
+  schoolName: raw.label ?? undefined,
   maxSpendUsd: raw.max_spend_usd ?? undefined,
   // A run that hit its budget is finished with valid partial results, not failed.
   stoppedAtLimit: raw.stop_reason === 'max_spend' || raw.stop_reason === 'max_records',
@@ -132,9 +133,11 @@ export const runsApi = {
    * Live progress. EventSource cannot set an Authorization header, so the token
    * goes in the query string — the one endpoint that accepts it that way.
    */
-  subscribeToRun(runId: string, onEvent: (event: { type: string; run?: Run }) => void) {
+  subscribeToRun(runId: string, onEvent: (event: RunEvent) => void) {
     if (isMockMode()) {
-      return mockRunStream(runId, onEvent)
+      return mockRunStream(runId, (event) =>
+        onEvent({ type: event.type, payload: event.run as unknown as Record<string, unknown> }),
+      )
     }
 
     const token = tokenStore.get()
@@ -145,7 +148,7 @@ export const runsApi = {
     const handle = (raw: MessageEvent) => {
       try {
         const payload = JSON.parse(raw.data) as Record<string, unknown>
-        onEvent({ type: String(payload.type ?? 'progress'), run: payload as unknown as Run })
+        onEvent({ type: String(payload.type ?? 'progress'), payload })
       } catch {
         /* a malformed frame should not tear down the stream */
       }
@@ -173,4 +176,44 @@ export const runsApi = {
 
     return () => source.close()
   },
+}
+
+export interface RunEvent {
+  type: string
+  payload: Record<string, unknown>
+}
+
+/** Merge a partial SSE frame into the displayed run without discarding state. */
+export const applyRunEvent = (current: Run, event: RunEvent): Run => {
+  const p = event.payload
+  const value = (key: string, fallback: number) =>
+    typeof p[key] === 'number' ? p[key] : fallback
+  const activity: AgentActivity | null = p.agent_id ? {
+    id: String(p.agent_id),
+    currentPage: typeof p.url === 'string' ? p.url : undefined,
+    currentAction: typeof p.action === 'string' ? p.action : event.type,
+    stepNumber: typeof p.progress === 'number' ? p.progress : undefined,
+    recordsFound: value('records_found', 0),
+    schoolName: typeof p.school_name === 'string' ? p.school_name : (typeof p.domain === 'string' ? p.domain : undefined),
+    timestamp: typeof p.at === 'string' ? p.at : new Date().toISOString(),
+  } : null
+  const prior = current.agentActivity ?? []
+  return {
+    ...current,
+    status: typeof p.status === 'string' ? p.status as Run['status'] : current.status,
+    stage: typeof p.stage === 'string' ? p.stage as Run['stage'] : current.stage,
+    progress: value('progress', current.progress ?? 0),
+    schoolName: typeof p.school_name === 'string' ? p.school_name : current.schoolName,
+    spendUsd: value('spend_usd', current.spendUsd ?? 0),
+    counts: {
+      emailsFound: current.counts?.emailsFound ?? 0,
+      newCount: current.counts?.newCount ?? 0,
+      changedCount: current.counts?.changedCount ?? 0,
+      missingCount: current.counts?.missingCount ?? 0,
+      failedCount: current.counts?.failedCount,
+      peopleFound: value('records_found', current.counts?.peopleFound ?? 0),
+      peopleEnriched: value('records_found', current.counts?.peopleEnriched ?? 0),
+    },
+    agentActivity: activity ? [activity, ...prior.filter((item) => item.id !== activity.id)].slice(0, 50) : prior,
+  }
 }

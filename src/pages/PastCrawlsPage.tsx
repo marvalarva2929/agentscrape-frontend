@@ -52,6 +52,7 @@ export function PastCrawlsPage({
             <thead>
               <tr>
                 <th>Started</th>
+                <th>School</th>
                 <th>Status</th>
                 <th>People found</th>
                 <th>New</th>
@@ -68,6 +69,7 @@ export function PastCrawlsPage({
                   onClick={() => onOpenRun(run.id)}
                 >
                   <td>{formatDateTime(run.startedAt)}</td>
+                  <td>{run.schoolName ?? 'School crawl'}</td>
                   <td>
                     <span className="status-pill">
                       {run.stoppedAtLimit ? 'stopped at budget' : run.status}

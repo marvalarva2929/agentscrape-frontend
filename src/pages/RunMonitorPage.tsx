@@ -1,20 +1,14 @@
-import { useEffect, useState } from 'react'
-import { DirectoryDashGame } from '../components/game/DirectoryDashGame'
 import type { Run } from '../types/run'
 
 export function RunMonitorPage({
   run,
   onBack,
-  onStartGame,
   onViewResults,
 }: {
   run: Run
   onBack: () => void
-  onStartGame: () => void
   onViewResults?: () => void
 }) {
-  const [showGame, setShowGame] = useState(false)
-
   const stageLabels: Record<string, string> = {
     discovering: 'Discovering People',
     directory: 'Directory Enrichment',
@@ -25,21 +19,14 @@ export function RunMonitorPage({
     cancelled: 'Cancelled',
   }
 
-  useEffect(() => {
-    if (run.progress && run.progress >= 100) {
-      onStartGame()
-    }
-  }, [run, onStartGame])
-
   return (
     <main className="page-shell">
       <div className="monitor-header">
         <div>
-          <div className="breadcrumb">Programs / {run.programName ?? 'Program'}</div>
-          <h2>Updating {run.programName ?? 'Program'}</h2>
+          <div className="breadcrumb">Crawls / {run.schoolName ?? 'School'}</div>
+          <h2>Updating {run.schoolName ?? run.programName ?? 'School'}</h2>
         </div>
         <div className="monitor-actions">
-          <button className="secondary-button" onClick={() => setShowGame(true)}>Play While You Wait</button>
           <button className="secondary-button" onClick={onBack}>Cancel</button>
         </div>
       </div>
@@ -52,7 +39,22 @@ export function RunMonitorPage({
         <div><span>People Enriched</span><strong>{run.counts?.peopleEnriched ?? 0}</strong></div>
         <div><span>Emails Found</span><strong>{run.counts?.emailsFound ?? 0}</strong></div>
         <div><span>Failures / Warnings</span><strong>{run.warnings ?? 0}</strong></div>
+        <div><span>Live spend</span><strong>${(run.spendUsd ?? 0).toFixed(4)}</strong></div>
       </div>
+
+      <section className="card activity-log">
+        <h3>Agent action log</h3>
+        {(run.agentActivity?.length ?? 0) === 0 ? <div className="muted">Waiting for the crawler to report its first action.</div> : (
+          <ol className="activity-list">
+            {run.agentActivity?.map((activity) => (
+              <li key={`${activity.id}-${activity.timestamp ?? activity.currentAction}`}>
+                <strong>{activity.schoolName ?? run.schoolName ?? 'School'}</strong>{' — '}{activity.currentAction ?? 'Working'}
+                {activity.currentPage ? <div className="muted">{activity.currentPage}</div> : null}
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
 
       <div className="stage-bar">
         {Object.entries(stageLabels).map(([key, label]) => (
@@ -80,17 +82,6 @@ export function RunMonitorPage({
             )}
           </div>
         </div>
-      )}
-
-      {showGame && (
-        <DirectoryDashGame
-          programName={run.programName ?? 'Program'}
-          status={run.stage ?? 'discovering'}
-          peopleFound={run.counts?.peopleFound ?? 0}
-          emailsFound={run.counts?.emailsFound ?? 0}
-          onClose={() => setShowGame(false)}
-          runFinished={(run.progress ?? 0) >= 100}
-        />
       )}
     </main>
   )
