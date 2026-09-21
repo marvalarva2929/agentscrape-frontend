@@ -7,7 +7,6 @@ export function AppShell({
   onNavigateSchools,
   onNavigateCrawl,
   onNavigateHistory,
-  onNavigateGame,
   onNavigateQueue,
   crawlLabel,
   statusText,
@@ -17,7 +16,6 @@ export function AppShell({
   onNavigateSchools: () => void
   onNavigateCrawl?: () => void
   onNavigateHistory?: () => void
-  onNavigateGame?: () => void
   onNavigateQueue?: () => void
   /** Names what starting a crawl will do: run it now, or join the queue. */
   crawlLabel?: string
@@ -30,7 +28,6 @@ export function AppShell({
         onNavigateSchools={onNavigateSchools}
         onNavigateCrawl={onNavigateCrawl}
         onNavigateHistory={onNavigateHistory}
-        onNavigateGame={onNavigateGame}
         onNavigateQueue={onNavigateQueue}
         crawlLabel={crawlLabel}
         statusText={statusText}

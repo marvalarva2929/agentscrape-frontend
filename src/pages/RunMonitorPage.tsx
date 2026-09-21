@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { runStatusLabel, runsApi, type SiteRunSnapshot } from '../api/runs'
-import { DirectoryDashGame } from '../components/game/DirectoryDashGame'
 import type { FeedItem, Run } from '../types/run'
 
 const stageLabels: Record<string, string> = {
@@ -13,19 +12,16 @@ const stageLabels: Record<string, string> = {
 export function RunMonitorPage({
   run,
   onBack,
-  onStartGame,
   onViewResults,
   onResume,
   onStop,
 }: {
   run: Run
   onBack: () => void
-  onStartGame: () => void
   onViewResults?: () => void
   onResume?: () => void
   onStop?: () => Promise<void>
 }) {
-  const [showGame, setShowGame] = useState(false)
   const [siteRuns, setSiteRuns] = useState<SiteRunSnapshot[]>([])
   const [retryingSiteId, setRetryingSiteId] = useState<string | null>(null)
   const [retryError, setRetryError] = useState('')
@@ -33,12 +29,6 @@ export function RunMonitorPage({
   const [stopError, setStopError] = useState('')
   const finished = ['completed', 'failed', 'cancelled'].includes(run.status)
   const elapsed = useElapsed(run.startedAt, run.finishedAt, run.elapsedSeconds, finished)
-
-  useEffect(() => {
-    if (finished) {
-      onStartGame()
-    }
-  }, [finished, onStartGame])
 
   // Coming back to a crawl that is still going: make sure something is still
   // listening, so the feed keeps filling and the run reads as live again.
@@ -96,7 +86,6 @@ export function RunMonitorPage({
           <h2>{finished ? 'Crawl finished' : 'Crawling'} {run.schoolName ?? 'Selected school'}</h2>
         </div>
         <div className="monitor-actions">
-          <button className="secondary-button" onClick={() => setShowGame(true)}>Play While You Wait</button>
           {!finished && <button className="secondary-button" disabled={stopping} onClick={() => void stopCrawl()}>{stopping ? 'Stopping…' : 'Stop Crawl'}</button>}
           <button className="secondary-button" onClick={onBack}>{finished ? 'Back' : 'Leave'}</button>
         </div>
@@ -185,17 +174,6 @@ export function RunMonitorPage({
           </ol>
         )}
       </section>
-
-      {showGame && (
-        <DirectoryDashGame
-          schoolName={run.schoolName ?? 'Selected school'}
-          status={run.stage ?? 'discovering'}
-          peopleFound={run.counts?.peopleFound ?? 0}
-          emailsFound={run.counts?.emailsFound ?? 0}
-          onClose={() => setShowGame(false)}
-          runFinished={finished}
-        />
-      )}
     </main>
   )
 }

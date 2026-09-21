@@ -9,6 +9,8 @@ export interface AgentActivity {
   stepNumber?: number
   screenshotUrl?: string
   recordsFound?: number
+  schoolName?: string
+  timestamp?: string
 }
 
 /** One line of the live activity feed: what the agent just did. */

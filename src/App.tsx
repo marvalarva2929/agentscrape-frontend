@@ -12,7 +12,6 @@ import { LoginPage } from './pages/LoginPage'
 import { PastCrawlsPage } from './pages/PastCrawlsPage'
 import { PersonPage } from './pages/PersonPage'
 import { RunMonitorPage } from './pages/RunMonitorPage'
-import { DirectoryDashGame } from './components/game/DirectoryDashGame'
 import { SchoolPicker } from './components/schools/SchoolPicker'
 import { QueuePanel } from './components/run/QueuePanel'
 import { useQueue } from './api/useQueue'
@@ -22,7 +21,7 @@ import type { Person, PersonStatus } from './types/person'
 import type { Run } from './types/run'
 import { downloadWorkbook } from './utils/excel'
 
-export type Screen = 'main' | 'person' | 'run-monitor' | 'crawl' | 'history' | 'game' | 'queue'
+export type Screen = 'main' | 'person' | 'run-monitor' | 'crawl' | 'history' | 'queue'
 type WizardDraft = { schoolId: string; schoolUrl: string; maxSpendUsd: string; maxPeople: string; maxTrainees: string; maxEmails: string; forceRescan: boolean; includeDirectory: boolean }
 const createWizardDraft = (schoolId = '', schoolUrl = ''): WizardDraft => ({ schoolId, schoolUrl, maxSpendUsd: '10', maxPeople: '', maxTrainees: '', maxEmails: '', forceRescan: false, includeDirectory: false })
 /** A whole-number limit from a form field; blank means no limit, anything else invalid. */
@@ -263,7 +262,7 @@ function App() {
   if (!isAuthenticated) return <LoginPage onLogin={handleLogin} />
   if (loading) return <LoadingState message="Loading residency data…" />
   if (error) return <BackendUnavailableState />
-  return <AppShell onLogout={handleLogout} onNavigateSchools={() => setScreen('main')} onNavigateHistory={() => setScreen('history')} onNavigateGame={() => setScreen('game')} onNavigateCrawl={() => { void navigateToCrawl() }} onNavigateQueue={() => setScreen('queue')} crawlLabel={queueBusy ? 'Add to Queue' : 'Run Crawl'} statusText="Backend online">
+  return <AppShell onLogout={handleLogout} onNavigateSchools={() => setScreen('main')} onNavigateHistory={() => setScreen('history')} onNavigateCrawl={() => { void navigateToCrawl() }} onNavigateQueue={() => setScreen('queue')} crawlLabel={queueBusy ? 'Add to Queue' : 'Run Crawl'} statusText="Backend online">
     {screen === 'main' && <main className="page-shell">
       <div className="page-header-row"><div><div className="breadcrumb">Schools</div><h2>Residency Data</h2></div></div>
       <div className="panel-block"><div className="table-controls" style={{ gridTemplateColumns: '1fr 1fr' }}>
@@ -282,8 +281,7 @@ function App() {
     </main>}
     {screen === 'history' && <PastCrawlsPage activeRun={run} onBack={() => setScreen('main')} onOpenRun={(id) => { void openRun(id).catch(() => setDataError('Could not open crawl details.')) }} />}
     {screen === 'person' && selectedPerson && <PersonPage school={selectedSchool ?? undefined} person={selectedPerson} onBack={() => setScreen('main')} />}
-    {screen === 'game' && <DirectoryDashGame schoolName={selectedSchool?.name ?? 'Directory Dash'} status="ready" peopleFound={0} emailsFound={0} runFinished={false} onClose={() => setScreen('main')} />}
-    {screen === 'run-monitor' && run && <RunMonitorPage run={run} onBack={() => setScreen('main')} onViewResults={() => { setScreen('main'); if (run.schoolId) selectSchool(run.schoolId) }} onStartGame={() => undefined} onResume={() => watchRun(run.id)} onStop={stopRun} />}
+    {screen === 'run-monitor' && run && <RunMonitorPage run={run} onBack={() => setScreen('main')} onViewResults={() => { setScreen('main'); if (run.schoolId) selectSchool(run.schoolId) }} onResume={() => watchRun(run.id)} onStop={stopRun} />}
     {screen === 'crawl' && (() => {
       const crawlSchool = schools.find((school) => school.id === wizardDraft.schoolId)
       return <main className="page-shell narrow-shell">

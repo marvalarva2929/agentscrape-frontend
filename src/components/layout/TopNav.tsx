@@ -5,7 +5,6 @@ export function TopNav({
   onNavigateSchools,
   onNavigateCrawl,
   onNavigateHistory,
-  onNavigateGame,
   onNavigateQueue,
   crawlLabel,
   statusText,
@@ -15,7 +14,6 @@ export function TopNav({
   onNavigateSchools: () => void
   onNavigateCrawl?: () => void
   onNavigateHistory?: () => void
-  onNavigateGame?: () => void
   onNavigateQueue?: () => void
   /** Names what starting a crawl will do: run it now, or join the queue. */
   crawlLabel?: string
@@ -33,9 +31,6 @@ export function TopNav({
         <button className="nav-link" onClick={onNavigateSchools}>Schools</button>
         {onNavigateHistory ? (
           <button className="nav-link" onClick={onNavigateHistory}>Past crawls</button>
-        ) : null}
-        {onNavigateGame ? (
-          <button className="nav-link" onClick={onNavigateGame}>Directory Dash</button>
         ) : null}
         {onNavigateQueue ? (
           <button className="nav-link" onClick={onNavigateQueue}>Queue</button>
