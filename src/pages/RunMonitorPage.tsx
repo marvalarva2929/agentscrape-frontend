@@ -100,6 +100,7 @@ export function RunMonitorPage({
   }
 
   const failedSites = siteRuns.filter((site) => site.status === 'failed' || site.status === 'rejected')
+  const emptySites = siteRuns.filter((site) => site.status === 'completed' && (site.records_found ?? 0) === 0 && site.error_code?.startsWith('NO_'))
   const skippedSites = siteRuns.filter((site) => site.status === 'skipped')
   const noPeople = finished && !run.errorMessage && failedSites.length === 0 && (run.counts?.peopleFound ?? 0) === 0 && skippedSites.length === 0
 
@@ -170,6 +171,11 @@ export function RunMonitorPage({
           </button>
         </div>
       ))}
+      {emptySites.map((site) => (
+        <div key={site.id} className="connection-notice" role="status">
+          <strong>{site.hospital ?? site.domain ?? 'A school'}</strong>: {site.error_message}
+        </div>
+      ))}
       {run.status === 'failed' && run.errorMessage && failedSites.length === 0 && <div className="error-banner">The crawl failed: {run.errorMessage}</div>}
       {retryError && <div className="error-banner">{retryError}</div>}
       {stopError && <div className="error-banner">{stopError}</div>}
@@ -223,13 +229,14 @@ export function RunMonitorPage({
           <div className="activity-feed-header"><h3>Schools</h3></div>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>School</th><th>Status</th><th>Pages</th><th>People</th><th>Note</th></tr></thead>
+              <thead><tr><th>School</th><th>Status</th><th>Pages</th><th>Programs</th><th>People</th><th>Note</th></tr></thead>
               <tbody>
                 {siteRuns.map((site) => (
                   <tr key={site.id}>
                     <td>{site.hospital ?? site.domain ?? site.site_id}</td>
                     <td><span className={`status-badge ${site.status}`}>{site.status}</span></td>
                     <td>{site.steps_taken ? `${site.steps_taken.toLocaleString()}${site.step_budget ? ` / ${site.step_budget.toLocaleString()}` : ''}` : '—'}</td>
+                    <td>{site.coverage?.programs_total ? `${site.coverage.programs_covered ?? 0} / ${site.coverage.programs_total}` : '—'}</td>
                     <td>{(site.records_found ?? 0).toLocaleString()}</td>
                     <td>{site.error_message ?? site.skip_reason ?? (site.agent_id && site.status === 'running' ? site.agent_id : '')}</td>
                   </tr>

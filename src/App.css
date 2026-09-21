@@ -1417,7 +1417,10 @@ td {
 .agent-steps-bar { height: 6px; border-radius: 3px; background: #dfe7eb; overflow: hidden; }
 .agent-steps-bar > div { height: 100%; background: #1f9d55; transition: width 0.4s ease; }
 
-.queue-name { font-weight: 700; padding: 0; text-align: left; }
+.text-button { background: transparent; border: none; padding: 0.25rem 0.5rem; color: #21467d; cursor: pointer; text-decoration: underline; border-radius: 0.5rem; }
+.text-button:hover { color: #102130; }
+.queue-name { font-weight: 700; padding: 0; text-align: left; font-size: 1rem; text-decoration: none; color: #102130; }
+.queue-name:hover { text-decoration: underline; }
 .queue-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; font-size: 14px; }
 .crawl-name strong { display: block; }
 
@@ -1435,3 +1438,8 @@ td {
   .inline-field { flex-direction: column; }
   .monitor-actions { flex-wrap: wrap; }
 }
+
+/* Checkboxes sit beside their label, not stretched like a text field. */
+.checkbox-row { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.4rem; }
+.field-group .checkbox-row input[type='checkbox'],
+.checkbox-row input[type='checkbox'] { width: auto; padding: 0; flex: none; }

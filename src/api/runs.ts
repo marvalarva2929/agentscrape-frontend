@@ -414,6 +414,8 @@ export interface SiteRunSnapshot {
   step_budget?: number
   records_found?: number
   skip_reason?: string | null
+  /** Programs the school was looked at for, and how many have a roster. */
+  coverage?: { programs_total?: number; programs_covered?: number } | null
   error_code?: string | null
   error_message?: string | null
 }

@@ -163,7 +163,7 @@ export function CrawlWizardPage({
                 <li key={school.url || school.id}>
                   <span className="picked-number">{index + 1}</span>
                   <span className="picked-name">{school.name}</span>
-                  <button type="button" className="link-button" aria-label={`Remove ${school.name}`} onClick={() => setPicked((current) => current.filter((item) => item !== school))}>Remove</button>
+                  <button type="button" className="text-button" aria-label={`Remove ${school.name}`} onClick={() => setPicked((current) => current.filter((item) => item !== school))}>Remove</button>
                 </li>
               ))}
             </ol>

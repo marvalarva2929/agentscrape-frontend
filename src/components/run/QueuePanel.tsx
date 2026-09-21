@@ -123,7 +123,7 @@ function QueueRow({
       <div className="queue-body">
         <div className="queue-title">
           {onOpenRun
-            ? <button type="button" className="link-button queue-name" onClick={() => onOpenRun(entry.run_id)}>{name}</button>
+            ? <button type="button" className="text-button queue-name" onClick={() => onOpenRun(entry.run_id)}>{name}</button>
             : <strong>{name}</strong>}
           <span className={`status-badge ${state}`}>{STATE_LABELS[state]}</span>
         </div>
