@@ -1,5 +1,5 @@
 export type TrainingType = 'Resident' | 'Fellow'
-export type PersonStatus = 'new' | 'active' | 'stale'
+export type PersonStatus = 'new' | 'active' | 'changed' | 'stale'
 
 /**
  * Everyone published on an institution's site is collected, so a person is not

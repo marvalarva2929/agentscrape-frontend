@@ -3,6 +3,11 @@ import type { FeedItem, Run } from '../types/run'
 import type { RunQueue } from '../types/queue'
 import { EMPTY_QUEUE } from '../types/queue'
 import { mockRunStream, mockRuns } from '../mocks/runs'
+import { EMPTY_COUNTS, FEED_LIMIT, isFinished, mergeRun as mergeRunRow, toStatus, type RunEvent } from './runEvents'
+import { openRunStream, type Connection } from './runStream'
+
+export { applyRunEvent, mergeRun, TERMINAL_EVENTS, type RunEvent } from './runEvents'
+export type { Connection } from './runStream'
 
 export interface StartRunRequest {
   /** The school to crawl. A run covers a whole institution. */
@@ -18,6 +23,8 @@ export interface StartRunRequest {
   maxEmails?: number | null
   forceRescan?: boolean
   schoolName?: string
+  /** The crawl's own name, as it appears in Past crawls. */
+  label?: string
   includeDirectory?: boolean
 }
 
@@ -26,7 +33,8 @@ interface RunResponse {
   status: string
   stop_reason?: string | null
   label?: string | null
-  config?: { step_budget?: number }
+  school_name?: string | null
+  config?: { step_budget?: number; modes?: string[] }
   sites_total: number
   sites_completed: number
   sites_skipped: number
@@ -37,6 +45,8 @@ interface RunResponse {
   records_new: number
   records_changed: number
   records_missing: number
+  tokens_in?: number
+  tokens_out?: number
   spend_usd: number
   max_spend_usd?: number | null
   max_records?: number | null
@@ -56,24 +66,20 @@ const elapsed = (startedAt?: string | null, finishedAt?: string | null): number 
   return Math.max(0, Math.round((end - Date.parse(startedAt)) / 1000))
 }
 
-/**
- * The backend holds a waiting run as `pending`, and reports a run that hit one
- * of its limits as `stopped_at_limit`. Neither word exists in the UI's own
- * vocabulary, so both are translated here rather than leaking into every
- * status check: an untranslated `pending` read as "not finished", which kept
- * the stop button live on a run that was only waiting.
- */
-const toStatus = (raw: string): Run['status'] => {
-  if (raw === 'stopped_at_limit') return 'completed'
-  if (raw === 'pending') return 'queued'
-  return raw as Run['status']
+const toRunType = (modes?: string[]): Run['runType'] => {
+  if (modes?.includes('directory') && modes.includes('crawl')) return 'New Crawl + Directory Search'
+  if (modes?.includes('directory')) return 'Directory Search'
+  return 'New Crawl'
 }
 
-const toRun = (raw: RunResponse): Run => ({
+export const toRun = (raw: RunResponse): Run => ({
   id: raw.id,
   status: toStatus(raw.status),
+  label: raw.label ?? undefined,
+  // The school, not the crawl's name: the name is `label`.
+  schoolName: raw.school_name ?? undefined,
+  runType: toRunType(raw.config?.modes),
   startedAt: raw.started_at ?? undefined,
-  schoolName: raw.label ?? undefined,
   finishedAt: raw.finished_at ?? undefined,
   elapsedSeconds: elapsed(raw.started_at, raw.finished_at),
   counts: {
@@ -85,6 +91,8 @@ const toRun = (raw: RunResponse): Run => ({
     missingCount: raw.records_missing,
   },
   spendUsd: raw.spend_usd,
+  tokensIn: raw.tokens_in,
+  tokensOut: raw.tokens_out,
   maxSpendUsd: raw.max_spend_usd ?? undefined,
   maxPeople: raw.max_records ?? undefined,
   maxTrainees: raw.max_trainees ?? undefined,
@@ -99,8 +107,10 @@ const toRun = (raw: RunResponse): Run => ({
   errorMessage: raw.error_message ?? undefined,
   // A run that hit one of its limits is finished with valid partial results, not failed.
   stoppedAtLimit: LIMIT_REASONS.has(raw.stop_reason ?? ''),
-  queued: raw.queued ?? raw.status === 'pending',
-  queuePosition: raw.queue_position ?? undefined,
+  // Waiting for its turn. (The backend's own `queued` is true for every run, so
+  // it cannot say whether this one is still waiting.)
+  queued: raw.status === 'pending',
+  queuePosition: raw.status === 'pending' ? (raw.queue_position ?? undefined) : undefined,
 })
 
 const LIMIT_REASONS = new Set(['max_spend', 'max_records', 'max_trainees', 'max_emails'])
@@ -115,6 +125,7 @@ const LIMIT_LABELS: Record<string, string> = {
 /** The status to show for a run, naming the limit it stopped at. */
 export function runStatusLabel(run: Run): string {
   if (run.stoppedAtLimit) return LIMIT_LABELS[run.stopReason ?? ''] ?? 'stopped at limit'
+  if (run.status === 'queued') return run.queuePosition ? `waiting · #${run.queuePosition}` : 'waiting'
   return run.status
 }
 
@@ -151,7 +162,7 @@ export const runsApi = {
           max_trainees: payload.maxTrainees ?? null,
           max_emails: payload.maxEmails ?? null,
           force_rescan: payload.forceRescan ?? false,
-          label: payload.schoolName ?? null,
+          label: payload.label?.trim() || payload.schoolName || null,
           modes: payload.includeDirectory ? ['crawl', 'directory'] : ['crawl'],
           // Schools run one at a time. The model budget is one process-wide
           // allowance, so runs started side by side split it between them and
@@ -212,6 +223,11 @@ export const runsApi = {
     return apiFetch<RunQueue>('/runs/queue')
   },
 
+  /** Move a waiting run up, down or to the front. Returns the queue afterwards. */
+  async moveRun(id: string, direction: 'up' | 'down' | 'top'): Promise<RunQueue> {
+    return apiFetch<RunQueue>(`/runs/${id}/move`, { method: 'POST', body: JSON.stringify({ direction }) })
+  },
+
   /** Per-site status. The authoritative snapshot for resyncing after a reconnect. */
   async getRunSites(id: string): Promise<SiteRunSnapshot[]> {
     if (isMockMode()) return []
@@ -226,53 +242,48 @@ export const runsApi = {
   /**
    * Live progress. EventSource cannot set an Authorization header, so the token
    * goes in the query string — the one endpoint that accepts it that way.
-   * Delivers each event's type and raw payload; `applyRunEvent` folds them in.
+   * The stream reopens itself after an error until the run is over or the
+   * person is signed out; `onConnection` says which state it is in.
    */
-  subscribeToRun(runId: string, onEvent: (event: RunEvent) => void) {
+  subscribeToRun(
+    runId: string,
+    onEvent: (event: RunEvent) => void,
+    onConnection?: (state: Connection) => void,
+  ) {
     if (isMockMode()) {
       return mockRunStream(runId, (event) =>
         onEvent({ type: event.type, payload: (event.run ?? {}) as unknown as Record<string, unknown> }),
       )
     }
-
-    const token = tokenStore.get()
-    const source = new EventSource(
-      `${getApiBaseUrl()}/runs/${runId}/events?token=${encodeURIComponent(token ?? '')}`,
-    )
-
-    const handle = (raw: MessageEvent) => {
-      try {
-        const payload = JSON.parse(raw.data) as Record<string, unknown>
-        onEvent({ type: String(payload.type ?? 'progress'), payload })
-      } catch {
-        /* a malformed frame should not tear down the stream */
-      }
-    }
-
-    source.onmessage = handle
-    for (const type of RUN_EVENT_TYPES) {
-      source.addEventListener(type, handle as EventListener)
-    }
-
-    // The stream can end without a completion event because the server is
-    // stopped when idle. Callers poll getRun as the fallback.
-    source.onerror = () => source.close()
-
-    return () => source.close()
+    return openRunStream({
+      url: () => `${getApiBaseUrl()}/runs/${runId}/events?token=${encodeURIComponent(tokenStore.get() ?? '')}`,
+      eventTypes: RUN_EVENT_TYPES,
+      onEvent,
+      onConnection,
+      // Before each retry: is the run still going, and are we still signed in?
+      // A 401 clears the token and tells the app (see `setUnauthorizedHandler`).
+      shouldReconnect: async () => {
+        try {
+          return !isFinished((await runsApi.getRun(runId)).status)
+        } catch (error) {
+          if (error instanceof ApiError && (error.status === 401 || error.status === 404)) return false
+          return true
+        }
+      },
+    })
   },
-}
-
-export interface RunEvent {
-  type: string
-  payload: Record<string, unknown>
 }
 
 const RUN_EVENT_TYPES = [
   'heartbeat',
+  'run_started',
   'run_progress',
+  'agent_spawned',
+  'agent_retired',
   'site_started',
   'site_step',
   'site_skipped',
+  'known_path_hit',
   'site_completed',
   'site_failed',
   'site_rejected',
@@ -281,170 +292,6 @@ const RUN_EVENT_TYPES = [
   'run_cancelled',
   'run_failed',
 ]
-
-export const TERMINAL_EVENTS = new Set(['run_completed', 'run_stopped_at_limit', 'run_cancelled', 'run_failed'])
-const FEED_LIMIT = 200
-const STAGES = new Set(['discovering', 'directory', 'finalizing', 'complete'])
-
-const num = (value: unknown): number | undefined =>
-  typeof value === 'number' && Number.isFinite(value) ? value : undefined
-const str = (value: unknown): string | undefined =>
-  typeof value === 'string' && value.trim() ? value : undefined
-
-/** Fold one stream event into the run the monitor shows. */
-export function applyRunEvent(run: Run, event: RunEvent): Run {
-  const p = event.payload
-  const at = str(p.at) ?? new Date().toISOString()
-  const feed = run.feed ?? []
-  const push = (item: Omit<FeedItem, 'id' | 'at'>): FeedItem[] =>
-    [{ id: `${at}-${feed.length}`, at, ...item }, ...feed].slice(0, FEED_LIMIT)
-
-  switch (event.type) {
-    case 'heartbeat':
-    case 'run_progress':
-      return {
-        ...run,
-        // The run row only takes spend and people when a site ends, and the
-        // snapshot frame sent on every (re)connect reads that row, so taking
-        // these verbatim drops a live crawl back to zero. Both only climb.
-        spendUsd: Math.max(num(p.spend_usd) ?? 0, run.spendUsd ?? 0),
-        sitesTotal: num(p.sites_total) ?? run.sitesTotal,
-        sitesCompleted: num(p.sites_completed) ?? run.sitesCompleted,
-        sitesSkipped: num(p.sites_skipped) ?? run.sitesSkipped,
-        sitesFailed: num(p.sites_failed) ?? run.sitesFailed,
-        sitesPending: num(p.sites_pending) ?? run.sitesPending,
-        counts: {
-          ...(run.counts ?? EMPTY_COUNTS),
-          peopleFound: Math.max(num(p.records_found) ?? 0, run.counts?.peopleFound ?? 0),
-          newCount: num(p.records_new) ?? run.counts?.newCount ?? 0,
-          changedCount: num(p.records_changed) ?? run.counts?.changedCount ?? 0,
-          missingCount: num(p.records_missing) ?? run.counts?.missingCount ?? 0,
-        },
-        status: run.status === 'queued' ? 'running' : run.status,
-      }
-    case 'site_started':
-      return {
-        ...run,
-        status: 'running',
-        stage: 'discovering',
-        feed: push({ kind: 'note', message: `Started crawling ${str(p.domain) ?? 'the school'}` }),
-      }
-    case 'site_step': {
-      const stage = str(p.stage)
-      if (stage && STAGES.has(stage)) {
-        return {
-          ...run,
-          stage: stage as Run['stage'],
-          progress: Math.max(run.progress ?? 0, num(p.progress) ?? 0),
-        }
-      }
-      const message = str(p.message)
-      if (str(p.action) === 'note') {
-        const programs = num(p.programs)
-        const coveredMatch = message?.match(/(\d+) of (\d+) programs covered/)
-        return {
-          ...run,
-          programsTotal: programs ?? (coveredMatch ? Number(coveredMatch[2]) : run.programsTotal),
-          programsCovered: coveredMatch ? Number(coveredMatch[1]) : run.programsCovered,
-          feed: message ? push({ kind: 'note', message }) : feed,
-        }
-      }
-      const records = num(p.records) ?? 0
-      const trainees = num(p.trainees) ?? 0
-      return {
-        ...run,
-        status: 'running',
-        stage: run.stage === 'discovering' || !run.stage ? 'directory' : run.stage,
-        pagesRead: (run.pagesRead ?? 0) + 1,
-        traineesFound: (run.traineesFound ?? 0) + trainees,
-        counts: {
-          ...(run.counts ?? EMPTY_COUNTS),
-          peopleFound: (run.counts?.peopleFound ?? 0) + records,
-        },
-        feed: push({
-          kind: 'page',
-          message: message ?? `Read ${str(p.url) ?? 'a page'}`,
-          url: str(p.url),
-          records,
-          trainees,
-        }),
-      }
-    }
-    case 'site_skipped':
-      return {
-        ...run,
-        skipped: true,
-        skipReason: str(p.reason),
-        feed: push({ kind: 'note', message: `Skipped: ${str(p.reason) ?? 'site unchanged since the last crawl'}` }),
-      }
-    case 'site_failed':
-    case 'site_rejected':
-      return {
-        ...run,
-        errorMessage: str(p.reason),
-        feed: push({ kind: 'error', message: `Stopped: ${str(p.reason) ?? str(p.error_code) ?? 'site failed'}` }),
-      }
-    case 'site_completed':
-      return { ...run, feed: push({ kind: 'note', message: 'Finished the site; reconciling records' }) }
-    default:
-      if (TERMINAL_EVENTS.has(event.type)) {
-        return {
-          ...run,
-          status: event.type === 'run_cancelled' ? 'cancelled' : event.type === 'run_failed' ? 'failed' : 'completed',
-          stage: 'complete',
-          progress: 100,
-          stoppedAtLimit: event.type === 'run_stopped_at_limit',
-        }
-      }
-      return run
-  }
-}
-
-const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
-
-const withoutUndefined = <T extends object>(value: T): Partial<T> =>
-  Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as Partial<T>
-
-/**
- * Fold a freshly fetched run row into what the live stream has already shown.
- *
- * The row is authoritative for status, but spend and people are only written to
- * it when a site finishes: taking them verbatim mid-crawl resets the monitor's
- * numbers to zero on every poll, which is what made the spend figure flash. The
- * feed and the per-page tallies exist only in the stream, so the row must never
- * be allowed to blank them.
- */
-export function mergeRun(current: Run | null | undefined, latest: Run): Run {
-  if (!current || current.id !== latest.id) return latest
-  const finished = TERMINAL_STATUSES.has(latest.status)
-  const merged: Run = { ...current, ...withoutUndefined(latest) }
-  return {
-    ...merged,
-    // A row read between "created" and "started" still says queued; the stream
-    // has already proved otherwise. This only began to bite once `toRun`
-    // translated the backend's `pending`: before that the row arrived as the
-    // untranslated word and never matched, so the stale status won.
-    status: current.status === 'running' && latest.status === 'queued' ? 'running' : merged.status,
-    stage: finished ? (latest.stage ?? current.stage ?? 'complete') : (current.stage ?? latest.stage),
-    feed: current.feed?.length ? current.feed : latest.feed,
-    pagesRead: Math.max(current.pagesRead ?? 0, latest.pagesRead ?? 0) || undefined,
-    traineesFound: Math.max(current.traineesFound ?? 0, latest.traineesFound ?? 0) || undefined,
-    programsTotal: current.programsTotal ?? latest.programsTotal,
-    programsCovered: current.programsCovered ?? latest.programsCovered,
-    // Spend only ever climbs within a run, so the larger of the two is the
-    // later one whichever source it came from.
-    spendUsd: Math.max(current.spendUsd ?? 0, latest.spendUsd ?? 0),
-    counts: {
-      ...(current.counts ?? EMPTY_COUNTS),
-      ...withoutUndefined(latest.counts ?? {}),
-      // The stream counts a person once per page they appear on, so once the
-      // run is over the deduplicated row is the honest number.
-      peopleFound: finished
-        ? (latest.counts?.peopleFound ?? current.counts?.peopleFound ?? 0)
-        : Math.max(current.counts?.peopleFound ?? 0, latest.counts?.peopleFound ?? 0),
-    },
-  }
-}
 
 /**
  * The live state of a run, kept per run id so leaving the monitor and coming
@@ -461,6 +308,7 @@ interface LiveRunState {
   programsCovered?: number
   spendUsd?: number
   peopleFound?: number
+  lastSeq?: number
   schoolId?: string
   schoolName?: string
   runType?: Run['runType']
@@ -493,6 +341,7 @@ export function rememberRun(run: Run): void {
     programsCovered: run.programsCovered,
     spendUsd: run.spendUsd,
     peopleFound: run.counts?.peopleFound,
+    lastSeq: run.lastSeq,
     schoolId: run.schoolId,
     schoolName: run.schoolName,
     runType: run.runType,
@@ -532,12 +381,13 @@ export function restoreRun(run: Run): Run {
     programsTotal: state.programsTotal,
     programsCovered: state.programsCovered,
     spendUsd: state.spendUsd,
+    lastSeq: state.lastSeq,
     schoolId: run.schoolId ?? state.schoolId,
     schoolName: run.schoolName ?? state.schoolName,
     runType: run.runType ?? state.runType,
     counts: { ...(run.counts ?? EMPTY_COUNTS), peopleFound: state.peopleFound ?? run.counts?.peopleFound ?? 0 },
   }
-  return mergeRun(remembered, run)
+  return mergeRunRow(remembered, run)
 }
 
 function pruneLiveRuns(store: Storage): void {
@@ -557,16 +407,13 @@ export interface SiteRunSnapshot {
   id: string
   site_id: string
   domain?: string | null
+  hospital?: string | null
   status: string
+  agent_id?: string | null
+  steps_taken?: number
+  step_budget?: number
+  records_found?: number
+  skip_reason?: string | null
   error_code?: string | null
   error_message?: string | null
-}
-
-const EMPTY_COUNTS = {
-  peopleFound: 0,
-  peopleEnriched: 0,
-  emailsFound: 0,
-  newCount: 0,
-  changedCount: 0,
-  missingCount: 0,
 }

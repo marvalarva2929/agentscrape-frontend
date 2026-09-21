@@ -12,12 +12,15 @@ export function SchoolPicker({
   value,
   onSelect,
   onClear,
+  showNewOption = true,
 }: {
   schools: School[]
   /** The selected school id, or '' for a school that is not in the list yet. */
   value: string
   onSelect: (school: School) => void
   onClear: () => void
+  /** Offer "New school — enter the URL". Off where schools are added to a list instead. */
+  showNewOption?: boolean
 }) {
   const selected = useMemo(() => schools.find((school) => school.id === value) ?? null, [schools, value])
   const [query, setQuery] = useState('')
@@ -93,14 +96,16 @@ export function SchoolPicker({
       )}
       {open && (
         <ul className="school-picker-list" id="school-picker-list" role="listbox">
-          <li
-            role="option"
-            aria-selected={!value}
-            className={`school-picker-option new-school ${!value ? 'selected' : ''}`}
-            onMouseDown={(event) => { event.preventDefault(); onClear(); setQuery(''); setOpen(false) }}
-          >
-            New school — enter the URL below
-          </li>
+          {showNewOption && (
+            <li
+              role="option"
+              aria-selected={!value}
+              className={`school-picker-option new-school ${!value ? 'selected' : ''}`}
+              onMouseDown={(event) => { event.preventDefault(); onClear(); setQuery(''); setOpen(false) }}
+            >
+              New school — enter the URL below
+            </li>
+          )}
           {matches.map((school, index) => (
             <li
               key={school.id}
@@ -114,7 +119,7 @@ export function SchoolPicker({
               <span>{[school.location, school.rootDomain].filter(Boolean).join(' · ')}</span>
             </li>
           ))}
-          {!matches.length && <li className="school-picker-empty">No school matches “{query.trim()}”. Enter its URL below to crawl it.</li>}
+          {!matches.length && <li className="school-picker-empty">{query.trim() ? `No school matches “${query.trim()}”.` : 'Every school is already chosen.'}{showNewOption ? ' Enter its URL below to crawl it.' : ''}</li>}
         </ul>
       )}
     </div>

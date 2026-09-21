@@ -1,4 +1,4 @@
-import { apiFetch, isMockMode, tokenStore } from './client'
+import { ApiError, apiFetch, isMockMode, tokenStore } from './client'
 import { mockAuthLogin, mockAuthLogout, mockGetSessionStatus } from '../mocks/auth'
 
 export interface LoginPayload {
@@ -55,10 +55,16 @@ export const authApi = {
 
     try {
       return await apiFetch<AuthSession>('/auth/session')
-    } catch {
-      // An expired or rejected token means "show the login screen", not an error.
-      tokenStore.clear()
-      return { authenticated: false }
+    } catch (error) {
+      // An expired or rejected token means "show the login screen". Anything
+      // else — the server is starting up, the network dropped — says nothing
+      // about the token, and throwing the sign-in away for it logged people out
+      // every time the backend was slow to wake.
+      if (error instanceof ApiError && error.status === 401) {
+        tokenStore.clear()
+        return { authenticated: false }
+      }
+      throw error
     }
   },
 }

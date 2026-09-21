@@ -60,10 +60,11 @@ const TRAINING_TYPE: Partial<Record<Category, TrainingType>> = {
   fellow: 'Fellow',
 }
 
-/** Backend statuses map onto the three the UI renders. */
+/** Backend statuses map onto the four the UI renders. `changed` is kept apart from `active`. */
 const toStatus = (status: string): PersonStatus => {
   if (status === 'missing') return 'stale'
   if (status === 'new') return 'new'
+  if (status === 'changed') return 'changed'
   return 'active'
 }
 

@@ -2,15 +2,21 @@ import type { RunCounts } from './api'
 
 export type RunStage = 'queued' | 'discovering' | 'directory' | 'finalizing' | 'complete' | 'failed' | 'cancelled'
 
-export interface AgentActivity {
+/** What one agent is doing right now, as the crawl reports it. */
+export interface AgentInfo {
   id: string
-  currentPage?: string
-  currentAction?: string
-  stepNumber?: number
-  screenshotUrl?: string
-  recordsFound?: number
-  schoolName?: string
-  timestamp?: string
+  /** The school it is working on. */
+  domain?: string
+  /** The page it is reading. */
+  url?: string
+  /** A sentence about the last thing it did. */
+  message?: string
+  title?: string
+  program?: string
+  pageType?: string
+  stepsTaken?: number
+  stepBudget?: number
+  at?: string
 }
 
 /** One line of the live activity feed: what the agent just did. */
@@ -27,6 +33,8 @@ export interface FeedItem {
 export interface Run {
   id: string
   schoolId?: string
+  /** The crawl's own name, as shown in Past crawls. */
+  label?: string
   /**
    * `queued` is a run waiting its turn: the backend holds it as `pending`
    * until the model budget is free, and `toRun` maps it across.
@@ -44,7 +52,12 @@ export interface Run {
   emailsFound?: number
   warnings?: number
   runType?: 'Directory Search' | 'New Crawl' | 'New Crawl + Directory Search'
-  agentActivity?: AgentActivity[]
+  /** Who is working on what, from the heartbeat and the step events. */
+  agents?: AgentInfo[]
+  tokensIn?: number
+  tokensOut?: number
+  /** The last stream event applied, so a replay after a reconnect is not counted twice. */
+  lastSeq?: number
   /** Live spend, metered as the run happens rather than totalled at the end. */
   spendUsd?: number
   maxSpendUsd?: number

@@ -1,9 +1,13 @@
 import { useState } from 'react'
 import { getApiBaseUrl, hasMixedContentProblem, setApiBaseUrl } from '../api/client'
 
-export function LoginPage({ onLogin }: { onLogin: (password: string) => Promise<boolean> | boolean }) {
+/** A wrong password and a backend that cannot be reached need different advice. */
+export type LoginResult = 'ok' | 'invalid' | 'unreachable'
+
+export function LoginPage({ onLogin, notice }: { onLogin: (password: string) => Promise<LoginResult> | LoginResult; notice?: string }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
   const [showApiField, setShowApiField] = useState(false)
   const [apiBase, setApiBase] = useState(getApiBaseUrl())
   const mixedContent = hasMixedContentProblem()
@@ -11,10 +15,12 @@ export function LoginPage({ onLogin }: { onLogin: (password: string) => Promise<
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setApiBaseUrl(apiBase)
-    const ok = await onLogin(password)
-    if (!ok) {
-      setError('Invalid password. Please try again.')
-    }
+    setBusy(true)
+    setError('')
+    const result = await onLogin(password)
+    setBusy(false)
+    if (result === 'invalid') setError('That password is not right. Please try again.')
+    else if (result === 'unreachable') setError('Could not reach the backend. If it was just started, give it a few seconds; otherwise check the backend address below.')
   }
 
   return (
@@ -35,8 +41,9 @@ export function LoginPage({ onLogin }: { onLogin: (password: string) => Promise<
             placeholder="Enter password"
             autoComplete="current-password"
           />
-          {error ? <div className="form-error">{error}</div> : null}
-          <button type="submit" className="primary-button full-width">Sign In</button>
+          {notice && !error ? <div className="form-notice" role="status">{notice}</div> : null}
+          {error ? <div className="form-error" role="alert">{error}</div> : null}
+          <button type="submit" className="primary-button full-width" disabled={busy}>{busy ? 'Signing in…' : 'Sign In'}</button>
         </form>
 
         {/* The same static bundle has to reach whichever backend is running. */}

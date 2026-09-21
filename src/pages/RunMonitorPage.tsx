@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react'
-import { runStatusLabel, runsApi, type SiteRunSnapshot } from '../api/runs'
+import { useEffect, useRef, useState } from 'react'
+import { runStatusLabel, runsApi, type Connection, type SiteRunSnapshot } from '../api/runs'
+import { isFinished } from '../api/runEvents'
+import { AgentPanel } from '../components/run/AgentPanel'
+import { SkippedNotice } from '../components/run/SkippedNotice'
 import type { FeedItem, Run } from '../types/run'
 
 const stageLabels: Record<string, string> = {
@@ -9,16 +12,23 @@ const stageLabels: Record<string, string> = {
   complete: 'Completed',
 }
 
+const SITES_POLL_MS = 5000
+
 export function RunMonitorPage({
   run,
+  connection = 'live',
   onBack,
   onViewResults,
+  onOpenQueue,
   onResume,
   onStop,
 }: {
   run: Run
+  /** Whether the live stream is delivering. Absent for a run that is over. */
+  connection?: Connection
   onBack: () => void
   onViewResults?: () => void
+  onOpenQueue?: () => void
   onResume?: () => void
   onStop?: () => Promise<void>
 }) {
@@ -26,26 +36,38 @@ export function RunMonitorPage({
   const [retryingSiteId, setRetryingSiteId] = useState<string | null>(null)
   const [retryError, setRetryError] = useState('')
   const [stopping, setStopping] = useState(false)
+  const [confirmingStop, setConfirmingStop] = useState(false)
   const [stopError, setStopError] = useState('')
-  const finished = ['completed', 'failed', 'cancelled'].includes(run.status)
-  const elapsed = useElapsed(run.startedAt, run.finishedAt, run.elapsedSeconds, finished)
+  const finished = isFinished(run.status)
+  const waiting = run.status === 'queued'
+  const elapsed = useElapsed(run.startedAt, run.finishedAt, run.elapsedSeconds, finished || waiting)
+  const title = run.label ?? run.schoolName ?? 'Selected school'
 
   // Coming back to a crawl that is still going: make sure something is still
   // listening, so the feed keeps filling and the run reads as live again.
   useEffect(() => {
     if (!finished) onResume?.()
-    // Mount only: re-running this on every render would re-check the stream
-    // more often than it can change.
+    // Re-check only when a different run is opened: re-running this on every
+    // render would re-check the stream more often than it can change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [run.id])
 
+  // Per-school status: the pages each agent has read and why a school failed.
+  // Polled while the run is going, and once more when it ends.
+  const runId = useRef(run.id)
+  runId.current = run.id
   useEffect(() => {
     let cancelled = false
-    void runsApi.getRunSites(run.id).then((sites) => {
-      if (!cancelled) setSiteRuns(sites)
-    }).catch(() => undefined)
-    return () => { cancelled = true }
-  }, [run.id, run.status])
+    const load = () => {
+      void runsApi.getRunSites(run.id).then((sites) => {
+        if (!cancelled && runId.current === run.id) setSiteRuns(sites)
+      }).catch(() => undefined)
+    }
+    load()
+    if (finished) return () => { cancelled = true }
+    const timer = window.setInterval(load, SITES_POLL_MS)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [run.id, run.status, finished])
 
   const retrySite = async (site: SiteRunSnapshot) => {
     setRetryingSiteId(site.site_id)
@@ -53,11 +75,11 @@ export function RunMonitorPage({
     try {
       await runsApi.retrySite(run.id, site.site_id)
       setSiteRuns((current) => current.map((item) => item.site_id === site.site_id
-        ? { ...item, status: 'pending', error_code: null, error_message: null }
+        ? { ...item, status: 'pending', error_code: null, error_message: null, skip_reason: null }
         : item))
       onResume?.()
     } catch {
-      setRetryError('Could not queue this site for another attempt. Please try again later.')
+      setRetryError('Could not queue this school for another attempt. Please try again in a moment.')
     } finally {
       setRetryingSiteId(null)
     }
@@ -67,62 +89,98 @@ export function RunMonitorPage({
     if (!onStop) return
     setStopping(true)
     setStopError('')
+    setConfirmingStop(false)
     try {
       await onStop()
     } catch {
-      setStopError('Could not stop the crawl. Please try again.')
+      setStopError(waiting ? 'Could not remove this crawl from the queue. Please try again.' : 'Could not stop the crawl. Please try again.')
     } finally {
       setStopping(false)
     }
   }
 
-  const blockedSites = siteRuns.filter((site) => site.error_code === 'SITE_BLOCKED' || site.error_code === 'SITE_RATE_LIMITED')
+  const failedSites = siteRuns.filter((site) => site.status === 'failed' || site.status === 'rejected')
+  const skippedSites = siteRuns.filter((site) => site.status === 'skipped')
+  const noPeople = finished && !run.errorMessage && failedSites.length === 0 && (run.counts?.peopleFound ?? 0) === 0 && skippedSites.length === 0
 
   return (
     <main className="page-shell">
       <div className="monitor-header">
         <div>
-          <div className="breadcrumb">Schools / {run.schoolName ?? 'Selected school'}</div>
-          <h2>{finished ? 'Crawl finished' : 'Crawling'} {run.schoolName ?? 'Selected school'}</h2>
+          <div className="breadcrumb">Crawls / {run.schoolName ?? 'Selected school'}</div>
+          <h2>{finished ? 'Crawl finished' : waiting ? 'Waiting to start' : 'Crawling'} · {title}</h2>
         </div>
         <div className="monitor-actions">
-          {!finished && <button className="secondary-button" disabled={stopping} onClick={() => void stopCrawl()}>{stopping ? 'Stopping…' : 'Stop Crawl'}</button>}
+          {!finished && onStop && (confirmingStop ? (
+            <>
+              <span className="confirm-text">{waiting ? 'Take it out of the queue?' : 'Stop this crawl? What it has found is kept.'}</span>
+              <button className="secondary-button danger" disabled={stopping} onClick={() => void stopCrawl()}>{waiting ? 'Yes, remove' : 'Yes, stop'}</button>
+              <button className="secondary-button" onClick={() => setConfirmingStop(false)}>{waiting ? 'Keep it' : 'Keep going'}</button>
+            </>
+          ) : (
+            <button className="secondary-button" disabled={stopping} onClick={() => setConfirmingStop(true)}>
+              {stopping ? 'Working…' : waiting ? 'Remove from queue' : 'Stop Crawl'}
+            </button>
+          ))}
+          {onOpenQueue && <button className="secondary-button" onClick={onOpenQueue}>Queue</button>}
           <button className="secondary-button" onClick={onBack}>{finished ? 'Back' : 'Leave'}</button>
         </div>
       </div>
 
+      {waiting && (
+        <div className="waiting-panel" role="status">
+          <strong>{run.queuePosition ? `Waiting — #${run.queuePosition} in the queue` : 'Waiting for its turn'}</strong>
+          <span>
+            Schools run one at a time. This one starts on its own as soon as the crawl before it finishes;
+            you can leave this page and it will still run.
+          </span>
+        </div>
+      )}
+
+      {!finished && <ConnectionNotice connection={connection} />}
+
       <div className="progress-strip">
         <div><span>Status</span><strong>{runStatusLabel(run)}</strong></div>
-        <div><span>Operation</span><strong>{run.runType ?? 'Crawl'}</strong></div>
-        <div><span>Stage</span><strong>{run.stage ?? 'queued'}</strong></div>
-        <div><span>Elapsed</span><strong>{formatDuration(elapsed)}</strong></div>
-        <div><span>Pages read</span><strong>{run.pagesRead ?? 0}</strong></div>
-        <div><span>Page budget</span><strong>{run.stepBudget ? `${run.pagesRead ?? 0} / ${run.stepBudget}` : 'â€”'}</strong></div>
+        <div><span>Elapsed</span><strong>{waiting ? '—' : formatDuration(elapsed)}</strong></div>
+        <div><span>Model spend</span><strong>{formatUsd(run.spendUsd)}{run.maxSpendUsd ? ` of ${formatUsd(run.maxSpendUsd)}` : ''}</strong></div>
+        <div><span>Tokens in / out</span><strong>{formatTokens(run.tokensIn)} / {formatTokens(run.tokensOut)}</strong></div>
         <div><span>People found</span><strong>{run.counts?.peopleFound ?? 0}</strong></div>
-        <div><span>Sites</span><strong>{run.sitesCompleted ?? 0}/{run.sitesTotal ?? 0} complete</strong></div>
-        <div><span>Skipped / failed</span><strong>{run.sitesSkipped ?? 0} / {run.sitesFailed ?? 0}</strong></div>
         <div><span>Residents &amp; fellows</span><strong>{run.traineesFound ?? 0}</strong></div>
+        <div><span>With an email</span><strong>{run.counts?.emailsFound ?? 0}</strong></div>
+        <div><span>Pages read</span><strong>{run.pagesRead ?? 0}{run.stepBudget ? ` / ${run.stepBudget}` : ''}</strong></div>
+        <div><span>Schools</span><strong>{run.sitesCompleted ?? 0}/{run.sitesTotal ?? 0} complete</strong></div>
+        <div><span>Skipped / failed</span><strong>{run.sitesSkipped ?? 0} / {run.sitesFailed ?? 0}</strong></div>
         <div>
           <span>Programs covered</span>
-          <strong>
-            {run.programsTotal ? `${run.programsCovered ?? 0} / ${run.programsTotal}` : '—'}
-          </strong>
+          <strong>{run.programsTotal ? `${run.programsCovered ?? 0} / ${run.programsTotal}` : '—'}</strong>
         </div>
-        <div><span>Model spend</span><strong>{formatUsd(run.spendUsd)}</strong></div>
+        <div><span>Operation</span><strong>{run.runType ?? 'Crawl'}</strong></div>
       </div>
 
-      {!finished && <p className="muted">This crawl ends when it reaches the page budget, runs out of worthwhile links, has 150 pages in a row with no people, or reaches a configured spend limit.</p>}
+      {!finished && !waiting && <p className="muted">This crawl ends when it reaches the page budget, runs out of worthwhile links, has 150 pages in a row with no people, or reaches a configured limit.</p>}
 
-      {blockedSites.map((site) => (
+      {failedSites.map((site) => (
         <div key={site.id} className="error-banner">
-          <span>{site.error_message ?? `Site could not be crawled (${site.domain ?? 'unknown site'}).`}</span>
+          <span>
+            <strong>{site.hospital ?? site.domain ?? 'A school'}</strong> could not be crawled:{' '}
+            {site.error_message ?? 'no reason was recorded.'}
+          </span>
           <button className="secondary-button small-button" disabled={retryingSiteId === site.site_id} onClick={() => void retrySite(site)}>
-            {retryingSiteId === site.site_id ? 'Queuing…' : 'Try again later'}
+            {retryingSiteId === site.site_id ? 'Queuing…' : 'Try again'}
           </button>
         </div>
       ))}
+      {run.status === 'failed' && run.errorMessage && failedSites.length === 0 && <div className="error-banner">The crawl failed: {run.errorMessage}</div>}
       {retryError && <div className="error-banner">{retryError}</div>}
       {stopError && <div className="error-banner">{stopError}</div>}
+
+      {skippedSites.map((site) => (
+        <SkippedNotice
+          key={site.id}
+          busy={retryingSiteId === site.site_id}
+          onCheckAnyway={() => void retrySite(site)}
+        />
+      ))}
 
       <div className="stage-bar">
         {Object.entries(stageLabels).map(([key, label]) => (
@@ -135,7 +193,7 @@ export function RunMonitorPage({
       {finished && (
         <div className="success-panel">
           <div className="success-header">
-            {run.errorMessage ? 'Crawl stopped early — results so far are saved' : 'Crawl complete'}
+            {run.status === 'failed' || run.errorMessage ? 'Crawl stopped early — results so far are saved' : 'Crawl complete'}
           </div>
           <div className="result-grid">
             <div><span>People found</span><strong>{run.counts?.peopleFound ?? 0}</strong></div>
@@ -146,6 +204,7 @@ export function RunMonitorPage({
             <div><span>Time</span><strong>{formatDuration(elapsed)}</strong></div>
             <div><span>Model spend</span><strong>{formatUsd(run.spendUsd)}</strong></div>
           </div>
+          {noPeople && <p className="feed-error-note">No people were found on this school. It may not publish its residents, or it may block automated visits — see the schools below for the reason.</p>}
           {run.errorMessage && <p className="feed-error-note">{run.errorMessage}</p>}
           <div className="modal-actions">
             {onViewResults ? (
@@ -157,14 +216,38 @@ export function RunMonitorPage({
         </div>
       )}
 
+      {!waiting && <AgentPanel agents={run.agents ?? []} finished={finished} />}
+
+      {siteRuns.length > 0 && (
+        <section className="sites-panel" aria-label="Schools in this crawl">
+          <div className="activity-feed-header"><h3>Schools</h3></div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>School</th><th>Status</th><th>Pages</th><th>People</th><th>Note</th></tr></thead>
+              <tbody>
+                {siteRuns.map((site) => (
+                  <tr key={site.id}>
+                    <td>{site.hospital ?? site.domain ?? site.site_id}</td>
+                    <td><span className={`status-badge ${site.status}`}>{site.status}</span></td>
+                    <td>{site.steps_taken ? `${site.steps_taken.toLocaleString()}${site.step_budget ? ` / ${site.step_budget.toLocaleString()}` : ''}` : '—'}</td>
+                    <td>{(site.records_found ?? 0).toLocaleString()}</td>
+                    <td>{site.error_message ?? site.skip_reason ?? (site.agent_id && site.status === 'running' ? site.agent_id : '')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       <section className="activity-feed" aria-live="polite">
         <div className="activity-feed-header">
-          <h3>Agent activity</h3>
-          {!finished && <span className="live-dot">Live</span>}
+          <h3>Activity</h3>
+          {!finished && !waiting && connection === 'live' && <span className="live-dot">Live</span>}
         </div>
         {(run.feed ?? []).length === 0 ? (
           <p className="activity-empty">
-            {finished ? 'No activity was recorded for this run.' : 'Waiting for the agent to start…'}
+            {finished ? 'No activity was recorded for this run.' : waiting ? 'Nothing yet — this crawl has not started.' : 'Waiting for the agent to start…'}
           </p>
         ) : (
           <ol className="activity-list">
@@ -176,6 +259,16 @@ export function RunMonitorPage({
       </section>
     </main>
   )
+}
+
+function ConnectionNotice({ connection }: { connection: Connection }) {
+  if (connection === 'live') return null
+  const text = connection === 'connecting'
+    ? 'Connecting to the live feed…'
+    : connection === 'reconnecting'
+      ? 'The live feed dropped. Reconnecting — the numbers below refresh every few seconds meanwhile.'
+      : 'No update has arrived for a while. Still trying; the numbers below refresh every few seconds.'
+  return <div className="connection-notice" role="status">{text}</div>
 }
 
 function FeedRow({ item }: { item: FeedItem }) {
@@ -212,6 +305,11 @@ function useElapsed(startedAt?: string, finishedAt?: string, fallback = 0, stopp
 function formatUsd(value?: number) {
   if (value === undefined || value === null) return '—'
   return `$${value.toFixed(value < 1 ? 3 : 2)}`
+}
+
+function formatTokens(value?: number) {
+  if (value === undefined || value === null) return '—'
+  return value >= 1_000_000 ? `${(value / 1_000_000).toFixed(1)}M` : value >= 1000 ? `${(value / 1000).toFixed(1)}k` : String(value)
 }
 
 function formatDuration(totalSeconds: number) {

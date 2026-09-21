@@ -96,6 +96,17 @@ export const tokenStore = {
   },
 }
 
+let unauthorizedHandler: (() => void) | null = null
+
+/**
+ * Called when the backend rejects the token mid-session. The token is already
+ * cleared by then; without this the screen stayed signed in while every poll
+ * failed quietly and the live monitor went still.
+ */
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  unauthorizedHandler = handler
+}
+
 export interface RequestOptions extends RequestInit {
   timeoutMs?: number
   /** Skip the Authorization header (login only). */
@@ -203,7 +214,10 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 
     if (!response.ok) {
       const error = await toApiError(response)
-      if (error.status === 401) tokenStore.clear()
+      if (error.status === 401 && !options.anonymous) {
+        tokenStore.clear()
+        unauthorizedHandler?.()
+      }
       throw error
     }
 

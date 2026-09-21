@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { peopleApi } from '../api/people'
 import { SourceScreenshot } from '../components/source/SourceScreenshot'
 import type { SourceProvenance } from '../types/source'
-import type { Person } from '../types/person'
+import type { Person, PersonVersion } from '../types/person'
 import type { School } from '../types/school'
 
 export function PersonPage({
@@ -28,21 +28,31 @@ export function PersonPage({
   ].filter(([, value]) => Boolean(value)) as Array<[string, string]>
 
   const [source, setSource] = useState<SourceProvenance | null>(null)
+  const [sourceState, setSourceState] = useState<'loading' | 'ready' | 'failed'>('loading')
+  const [history, setHistory] = useState<PersonVersion[]>(person.versionHistory ?? [])
 
   useEffect(() => {
     let cancelled = false
+    setSource(null); setSourceState('loading'); setHistory(person.versionHistory ?? [])
     peopleApi
       .getSource(person.id)
       .then((loaded) => {
-        if (!cancelled) setSource(loaded)
+        if (!cancelled) { setSource(loaded); setSourceState('ready') }
       })
       .catch(() => {
-        // Provenance is supporting detail; the page still works without it.
+        // Provenance is supporting detail; the page still works without it, but
+        // it must say so rather than sit on "Loading source…" for good.
+        if (!cancelled) setSourceState('failed')
       })
+    // What changed about this person between crawls.
+    peopleApi
+      .getVersions(person.id)
+      .then((versions) => { if (!cancelled) setHistory(versions) })
+      .catch(() => undefined)
     return () => {
       cancelled = true
     }
-  }, [person.id])
+  }, [person.id, person.versionHistory])
 
   return (
     <main className="page-shell narrow-shell">
@@ -98,19 +108,23 @@ export function PersonPage({
 
         {/* The screenshot replaces the old text snippet: it shows the page as
             it looked, with boxes over the exact fields that were read. */}
-        {source ? <SourceScreenshot source={source} /> : <p className="muted">Loading source…</p>}
+        {source
+          ? <SourceScreenshot source={source} />
+          : sourceState === 'failed'
+            ? <p className="muted">The source for this person could not be loaded. The details above are still what the page stated.</p>
+            : <p className="muted">Loading source…</p>}
       </section>
 
-      {person.versionHistory && person.versionHistory.length > 0 && (
+      {history.length > 0 && (
         <section className="detail-section">
           <div className="section-title-row">
             <h3>History</h3>
           </div>
 
           <div className="timeline">
-            {person.versionHistory.map((entry) => (
+            {history.map((entry) => (
               <div key={entry.id} className="timeline-item">
-                <div className="timeline-date">{entry.date}</div>
+                <div className="timeline-date">{formatWhen(entry.date)}</div>
                 <div className="timeline-content">
                   <strong>{entry.field}</strong>
                   <div className="history-values">

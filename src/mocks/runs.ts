@@ -20,10 +20,6 @@ export const mockRuns: Record<string, Run> = {
     schoolName: 'Texas Tech University Health Sciences Center',
     elapsedSeconds: 178,
     runType: 'New Crawl + Directory Search',
-    agentActivity: [
-      { id: 'agent-1', currentPage: 'https://www.ttuhsc.edu/medicine', currentAction: 'Indexing school pages', stepNumber: 7, recordsFound: 23 },
-      { id: 'agent-2', currentPage: 'https://www.ttuhsc.edu/medicine/directory', currentAction: 'Parsing directory records', stepNumber: 16, recordsFound: 18 },
-    ],
   },
   'run-2': {
     id: 'run-2',
@@ -48,33 +44,35 @@ export const mockRuns: Record<string, Run> = {
   },
 }
 
+/**
+ * A stream shaped like the real one: heartbeats carrying the live figures and
+ * the agent roster, and per-page steps. The events the real reducer folds in,
+ * not a private format, so mock mode exercises the same code as production.
+ */
 export const mockRunStream = (runId: string, onEvent: (event: { type: string; run?: Run }) => void) => {
   const run = mockRuns[runId] ?? mockRuns['run-1']
-  let progress = run.progress ?? 0
+  const emit = (type: string, payload: Record<string, unknown>) =>
+    onEvent({ type, run: { type, ...payload } as unknown as Run })
+  let step = 0
+  let people = run.counts?.peopleFound ?? 0
 
+  emit('run_started', { at: new Date().toISOString() })
   const timer = window.setInterval(() => {
-    progress = Math.min(100, progress + 5)
-    onEvent({
-      type: 'progress',
-      run: {
-        ...run,
-        progress,
-        status: progress >= 100 ? 'completed' : 'running',
-        stage: progress < 35 ? 'discovering' : progress < 80 ? 'directory' : 'finalizing',
-        counts: {
-          peopleFound: Math.min(47, (run.counts?.peopleFound ?? 0) + 2),
-          peopleEnriched: Math.min(38, (run.counts?.peopleEnriched ?? 0) + 2),
-          emailsFound: Math.min(38, (run.counts?.emailsFound ?? 0) + 1),
-          newCount: run.counts?.newCount ?? 0,
-          changedCount: run.counts?.changedCount ?? 0,
-          missingCount: run.counts?.missingCount ?? 0,
-          failedCount: run.counts?.failedCount ?? 0,
-        },
-      },
+    step += 1
+    people = Math.min(47, people + 2)
+    emit('site_step', {
+      agent_id: 'agent-0', domain: 'www.ttuhsc.edu', url: `https://www.ttuhsc.edu/medicine/page-${step}`,
+      message: `Read page ${step}`, records: 2, steps_taken: step, step_budget: 40, seq: step * 2,
     })
-
-    if (progress >= 100) {
+    emit('heartbeat', {
+      spend_usd: step * 0.02, tokens_in: step * 900, tokens_out: step * 120, records_collected: people,
+      trainees_collected: Math.floor(people * 0.8), emails_collected: Math.floor(people / 2), active_agents: 1,
+      agents: [{ agent_id: 'agent-0', domain: 'www.ttuhsc.edu', url: `https://www.ttuhsc.edu/medicine/page-${step}`, message: `Read page ${step}`, steps_taken: step, step_budget: 40 }],
+      seq: step * 2 + 1,
+    })
+    if (step >= 20) {
       window.clearInterval(timer)
+      emit('run_completed', { status: 'completed', spend_usd: step * 0.02 })
     }
   }, 1200)
 
