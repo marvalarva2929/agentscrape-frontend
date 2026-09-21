@@ -55,15 +55,15 @@ export function PastCrawlsPage({
   return (
     <main className="page-shell">
       <div className="page-header-row">
-        <div><div className="breadcrumb">Crawls</div><h2>Past Crawls</h2></div>
+        <h2>Past Crawls</h2>
         <div className="modal-actions">
           <button className="secondary-button" disabled={exporting || visibleRuns.length === 0} onClick={exportRows}>{exporting ? 'Preparing Excel…' : 'Download Excel'}</button>
-          <button className="secondary-button" onClick={onBack}>Back</button>
+          <button className="secondary-button" onClick={onBack}>← Past data</button>
         </div>
       </div>
       {error && <div className="error-banner">{error}</div>}
       {loading && <div className="muted">Loading…</div>}
-      {!loading && !visibleRuns.length && !error && <div className="empty-state">Nothing has been crawled yet. Choose Run Crawl to start.</div>}
+      {!loading && !visibleRuns.length && !error && <div className="empty-state">Nothing has been crawled yet.</div>}
       {visibleRuns.length > 0 && (
         <div className="table-panel">
           <div className="table-wrap">

@@ -15,7 +15,6 @@ export interface CrawlRequest {
   maxPeople: number | null
   maxTrainees: number | null
   maxEmails: number | null
-  forceRescan: boolean
 }
 
 interface Picked {
@@ -26,9 +25,9 @@ interface Picked {
 }
 
 const LIMIT_FIELDS = [
-  { key: 'maxPeople', label: 'People', hint: 'Everyone collected' },
-  { key: 'maxTrainees', label: 'Residents & fellows', hint: 'Trainees collected' },
-  { key: 'maxEmails', label: 'With an email', hint: 'People with an address' },
+  { key: 'maxPeople', label: 'People' },
+  { key: 'maxTrainees', label: 'Residents & fellows' },
+  { key: 'maxEmails', label: 'With an email' },
 ] as const
 
 /** A whole-number limit from a form field; blank means no limit, anything else invalid. */
@@ -67,7 +66,6 @@ export function CrawlWizardPage({
   const [crawlName, setCrawlName] = useState('')
   const [maxSpendUsd, setMaxSpendUsd] = useState('10')
   const [limits, setLimits] = useState({ maxPeople: '', maxTrainees: '', maxEmails: '' })
-  const [forceRescan, setForceRescan] = useState(false)
   const [includeDirectory, setIncludeDirectory] = useState(false)
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
@@ -115,7 +113,7 @@ export function CrawlWizardPage({
       // One school can be named; several are named after themselves.
       label: picked.length === 1 && crawlName.trim() ? crawlName.trim() : defaultCrawlName(school.name, now),
       includeDirectory: includeDirectory && directoryAvailable,
-      maxSpendUsd: budget, maxPeople, maxTrainees, maxEmails, forceRescan,
+      maxSpendUsd: budget, maxPeople, maxTrainees, maxEmails,
     }))
   }
 
@@ -140,13 +138,8 @@ export function CrawlWizardPage({
 
   return (
     <main className="page-shell narrow-shell">
-      <div className="page-header-row"><div><div className="breadcrumb">{label}</div><h2>{label}</h2></div></div>
-      {queueBusy && (
-        <>
-          <p className="muted">A crawl is already running. Schools added here join the queue and start on their own, one at a time, in this order.</p>
-          <section className="panel-block"><QueuePanel compact onOpenRun={onOpenRun} /></section>
-        </>
-      )}
+      <div className="page-header-row"><h2>Start a new crawl</h2><button className="secondary-button" onClick={onCancel}>← Home</button></div>
+      {queueBusy && <section className="panel-block"><QueuePanel compact onOpenRun={onOpenRun} /></section>}
       <section className="panel-block">
         <div className="field-group">
           <span className="input-label">Schools</span>
@@ -167,7 +160,7 @@ export function CrawlWizardPage({
                 </li>
               ))}
             </ol>
-          ) : <p className="muted">No school chosen yet. Search above, or add one by its web address below.</p>}
+          ) : <p className="muted">No school chosen yet.</p>}
         </div>
         <div className="field-group">
           <label className="input-label" htmlFor="wizard-url">A school that is not in the list</label>
@@ -180,10 +173,8 @@ export function CrawlWizardPage({
           <div className="field-group">
             <label className="input-label" htmlFor="wizard-name">Crawl name</label>
             <input id="wizard-name" value={crawlName} onChange={(event) => setCrawlName(event.target.value)} placeholder={defaultCrawlName(picked[0].name)} />
-            <small>This is how the crawl appears in Past crawls. Leave it blank to use the name above.</small>
           </div>
         )}
-        {picked.length > 1 && <p className="muted">Each school is queued as its own crawl, named after the school and the time.</p>}
         {directoryAvailable && (
           <div className="field-group">
             <label className="input-label">Optional operation</label>
@@ -198,13 +189,10 @@ export function CrawlWizardPage({
               <label key={field.key} className="limit-field" htmlFor={`limit-${field.key}`}>
                 <span>{field.label}</span>
                 <input id={`limit-${field.key}`} type="number" min={1} step={1} inputMode="numeric" value={limits[field.key]} onChange={(event) => setLimits((current) => ({ ...current, [field.key]: event.target.value }))} placeholder="No limit" />
-                <small>{field.hint}</small>
               </label>
             ))}
           </div>
-          <small>Whichever limit is reached first ends the crawl. A directory search still runs on the people already found; the budget stops everything.</small>
         </div>
-        <label className="checkbox-row"><input type="checkbox" checked={forceRescan} onChange={(event) => setForceRescan(event.target.checked)} /><span>Force rescan</span></label>
         <div className="review-box">
           <div className="review-row"><span>Operation</span><strong>{includeDirectory && directoryAvailable ? 'Crawl + Directory Search' : 'Crawl'}</strong></div>
           <div className="review-row"><span>{picked.length === 1 ? 'School' : 'Schools'}</span><strong>{picked.length ? picked.map((school) => school.name).join(', ') : '—'}</strong></div>
@@ -213,9 +201,7 @@ export function CrawlWizardPage({
         {error && <div className="error-banner" role="alert">{error}</div>}
         {confirming ? (
           <div className="confirm-box" role="alertdialog" aria-label="Confirm crawl">
-            <p>
-              <strong>{picked.length} {noun}</strong> will be crawled with the model API, one at a time. Each one stops at <strong>{stops}</strong>.
-            </p>
+            <p>Crawl <strong>{picked.length} {noun}</strong>? Each stops at <strong>{stops}</strong>.</p>
             <div className="modal-actions">
               <button className="secondary-button" disabled={submitting} onClick={() => setConfirming(false)}>Back</button>
               <button className="primary-button" disabled={submitting} onClick={() => void start()}>{submitting ? 'Starting…' : `Yes, ${label === 'Start Crawl' ? 'start the crawl' : 'add to the queue'}`}</button>
@@ -223,7 +209,6 @@ export function CrawlWizardPage({
           </div>
         ) : (
           <div className="modal-actions">
-            <button className="secondary-button" onClick={onCancel}>Cancel</button>
             <button className="primary-button" disabled={picked.length === 0} onClick={review}>{label}</button>
           </div>
         )}

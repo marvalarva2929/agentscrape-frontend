@@ -464,6 +464,7 @@ td {
 .review-box {
   display: grid;
   gap: 0.9rem;
+  margin-top: 1rem;
   background: #f7fafb;
   border-radius: 0.9rem;
   padding: 1rem;
@@ -1177,10 +1178,6 @@ td {
   color: #9ca3af;
 }
 
-.skip-notice {
-  border-left: 3px solid #2563eb;
-}
-
 .capitalise {
   text-transform: capitalize;
 }
@@ -1443,3 +1440,21 @@ td {
 .checkbox-row { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.4rem; }
 .field-group .checkbox-row input[type='checkbox'],
 .checkbox-row input[type='checkbox'] { width: auto; padding: 0; flex: none; }
+
+.home-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+.home-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.home-button {
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 0.35rem; min-height: 5.5rem;
+  padding: 1.2rem 1.4rem; font-size: 1.15rem; text-align: left; cursor: pointer;
+  background: white; color: #102130; border: 1px solid #dfe8ed; border-radius: 1rem;
+  box-shadow: 0 4px 16px rgba(8, 19, 30, 0.04);
+}
+.home-button:hover { border-color: #21467d; }
+.home-button.primary { background: #12324a; color: white; border-color: #12324a; }
+.home-button-note { font-size: 0.95rem; color: #52606b; }
+
+.nav-link.active, .primary-button.active { outline: 2px solid rgba(255, 255, 255, 0.85); outline-offset: 1px; opacity: 1; }
+@media (max-width: 900px) {
+  .home-actions { grid-template-columns: 1fr; }
+  .home-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

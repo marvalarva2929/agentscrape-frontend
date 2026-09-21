@@ -72,7 +72,7 @@ export function QueuePanel({
 
   const nothing = queue.running.length === 0 && queue.waiting.length === 0 && queue.stalled.length === 0
   if (nothing) {
-    return <div className="empty-state">Nothing is running and nothing is queued. Add schools with Run Crawl.</div>
+    return <div className="empty-state">No crawls are running.</div>
   }
 
   const rowProps = { compact, onOpenRun, busyId, confirmId, setConfirmId, move, remove }

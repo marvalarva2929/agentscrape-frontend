@@ -134,12 +134,6 @@ describe('the end of a run', () => {
     expect(next.stoppedAtLimit).toBe(true)
     expect(next.spendUsd).toBe(9.9)
   })
-
-  it('says why a school was skipped', () => {
-    const next = applyRunEvent(run(), ev('site_skipped', { skip_reason: 'unchanged' }))
-    expect(next.skipped).toBe(true)
-    expect(next.skipReason).toBe('unchanged')
-  })
 })
 
 describe('merging a fetched row', () => {

@@ -21,7 +21,6 @@ export interface StartRunRequest {
   maxTrainees?: number | null
   /** Stop crawling once this many people with an email have been collected. */
   maxEmails?: number | null
-  forceRescan?: boolean
   schoolName?: string
   /** The crawl's own name, as it appears in Past crawls. */
   label?: string
@@ -37,7 +36,6 @@ interface RunResponse {
   config?: { step_budget?: number; modes?: string[] }
   sites_total: number
   sites_completed: number
-  sites_skipped: number
   sites_failed: number
   sites_rejected?: number
   sites_pending?: number
@@ -99,7 +97,6 @@ export const toRun = (raw: RunResponse): Run => ({
   maxEmails: raw.max_emails ?? undefined,
   sitesTotal: raw.sites_total,
   sitesCompleted: raw.sites_completed,
-  sitesSkipped: raw.sites_skipped,
   sitesFailed: raw.sites_failed,
   stepBudget: raw.config?.step_budget,
   sitesPending: raw.sites_pending,
@@ -161,12 +158,9 @@ export const runsApi = {
           max_records: payload.maxPeople ?? null,
           max_trainees: payload.maxTrainees ?? null,
           max_emails: payload.maxEmails ?? null,
-          force_rescan: payload.forceRescan ?? false,
           label: payload.label?.trim() || payload.schoolName || null,
           modes: payload.includeDirectory ? ['crawl', 'directory'] : ['crawl'],
-          // Schools run one at a time. The model budget is one process-wide
-          // allowance, so runs started side by side split it between them and
-          // each still pays its own discovery and ranking startup in full.
+          // Schools run one at a time: the model budget is one process-wide allowance.
           queued: true,
         },
       }),
@@ -181,11 +175,11 @@ export const runsApi = {
     return toRun(await apiFetch<RunResponse>(`/runs/${id}`))
   },
 
-  async listRuns(): Promise<Run[]> {
+  async listRuns(maxPages = 4): Promise<Run[]> {
     if (isMockMode()) {
       return Object.values(mockRuns)
     }
-    const rows = await fetchAllPages<RunResponse>('/runs', { pageSize: 50, maxPages: 4 })
+    const rows = await fetchAllPages<RunResponse>('/runs', { pageSize: 50, maxPages })
     return rows.map(toRun)
   },
 
@@ -234,7 +228,7 @@ export const runsApi = {
     return fetchAllPages<SiteRunSnapshot>(`/runs/${id}/sites`)
   },
 
-  /** Re-queues one finished site as a forced rescan. Useful after a 429. */
+  /** Re-queues one finished site to be crawled again. Useful after a 429. */
   async retrySite(runId: string, siteId: string): Promise<SiteRunSnapshot> {
     return apiFetch<SiteRunSnapshot>(`/runs/${runId}/sites/${siteId}/retry`, { method: 'POST' })
   },
@@ -282,7 +276,6 @@ const RUN_EVENT_TYPES = [
   'agent_retired',
   'site_started',
   'site_step',
-  'site_skipped',
   'known_path_hit',
   'site_completed',
   'site_failed',
@@ -413,7 +406,6 @@ export interface SiteRunSnapshot {
   steps_taken?: number
   step_budget?: number
   records_found?: number
-  skip_reason?: string | null
   /** Programs the school was looked at for, and how many have a roster. */
   coverage?: { programs_total?: number; programs_covered?: number } | null
   error_code?: string | null

@@ -3,7 +3,7 @@
  * back button brings the same screen back. A crawl has an address of its own
  * (`#/run/<id>`) because the monitor used to be lost on every reload.
  */
-export type RoutableScreen = 'main' | 'queue' | 'history' | 'crawl' | 'run-monitor'
+export type RoutableScreen = 'home' | 'data' | 'queue' | 'history' | 'crawl' | 'run-monitor'
 
 export interface Route {
   screen: RoutableScreen
@@ -14,15 +14,17 @@ export function parseHash(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean)
   const [head, id] = parts
   if (head === 'run' && id) return { screen: 'run-monitor', runId: decodeURIComponent(id) }
+  if (head === 'data') return { screen: 'data' }
   if (head === 'queue') return { screen: 'queue' }
   if (head === 'past') return { screen: 'history' }
   if (head === 'crawl') return { screen: 'crawl' }
-  return { screen: 'main' }
+  return { screen: 'home' }
 }
 
 export function toHash(screen: string, runId?: string): string {
   switch (screen) {
     case 'run-monitor': return runId ? `#/run/${encodeURIComponent(runId)}` : '#/queue'
+    case 'data': return '#/data'
     case 'queue': return '#/queue'
     case 'history': return '#/past'
     case 'crawl': return '#/crawl'

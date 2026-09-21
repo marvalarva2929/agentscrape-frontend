@@ -88,5 +88,4 @@ populate/run them separately.
   with the exact fields highlighted
 - **Past crawls** — crawls take minutes and there are no notifications, so this
   is how you come back to a finished run
-- **Run monitor** — live progress over SSE, including the skipped state when a
-  site has not changed
+- **Run monitor** — live progress over SSE

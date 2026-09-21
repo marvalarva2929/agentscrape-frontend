@@ -70,10 +70,6 @@ export interface Run {
    * results, so this is not a failure state.
    */
   stoppedAtLimit?: boolean
-  /** Set when the site was unchanged and the crawl was skipped entirely. */
-  skipped?: boolean
-  skipReason?: string
-  lastScrapedAt?: string
   /** Newest first, capped. Built from the live event stream. */
   feed?: FeedItem[]
   /** Live tallies from the stream; the run row only updates when a site ends. */
@@ -84,7 +80,6 @@ export interface Run {
   errorMessage?: string
   sitesTotal?: number
   sitesCompleted?: number
-  sitesSkipped?: number
   sitesFailed?: number
   sitesPending?: number
   stopReason?: string

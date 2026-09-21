@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { runStatusLabel, runsApi, type Connection, type SiteRunSnapshot } from '../api/runs'
 import { isFinished } from '../api/runEvents'
 import { AgentPanel } from '../components/run/AgentPanel'
-import { SkippedNotice } from '../components/run/SkippedNotice'
 import type { FeedItem, Run } from '../types/run'
 
 const stageLabels: Record<string, string> = {
@@ -75,7 +74,7 @@ export function RunMonitorPage({
     try {
       await runsApi.retrySite(run.id, site.site_id)
       setSiteRuns((current) => current.map((item) => item.site_id === site.site_id
-        ? { ...item, status: 'pending', error_code: null, error_message: null, skip_reason: null }
+        ? { ...item, status: 'pending', error_code: null, error_message: null }
         : item))
       onResume?.()
     } catch {
@@ -101,14 +100,12 @@ export function RunMonitorPage({
 
   const failedSites = siteRuns.filter((site) => site.status === 'failed' || site.status === 'rejected')
   const emptySites = siteRuns.filter((site) => site.status === 'completed' && (site.records_found ?? 0) === 0 && site.error_code?.startsWith('NO_'))
-  const skippedSites = siteRuns.filter((site) => site.status === 'skipped')
-  const noPeople = finished && !run.errorMessage && failedSites.length === 0 && (run.counts?.peopleFound ?? 0) === 0 && skippedSites.length === 0
+  const noPeople = finished && !run.errorMessage && failedSites.length === 0 && (run.counts?.peopleFound ?? 0) === 0
 
   return (
     <main className="page-shell">
       <div className="monitor-header">
         <div>
-          <div className="breadcrumb">Crawls / {run.schoolName ?? 'Selected school'}</div>
           <h2>{finished ? 'Crawl finished' : waiting ? 'Waiting to start' : 'Crawling'} · {title}</h2>
         </div>
         <div className="monitor-actions">
@@ -123,18 +120,14 @@ export function RunMonitorPage({
               {stopping ? 'Working…' : waiting ? 'Remove from queue' : 'Stop Crawl'}
             </button>
           ))}
-          {onOpenQueue && <button className="secondary-button" onClick={onOpenQueue}>Queue</button>}
-          <button className="secondary-button" onClick={onBack}>{finished ? 'Back' : 'Leave'}</button>
+          {onOpenQueue && <button className="secondary-button" onClick={onOpenQueue}>Running crawls</button>}
+          <button className="secondary-button" onClick={onBack}>← Home</button>
         </div>
       </div>
 
       {waiting && (
         <div className="waiting-panel" role="status">
           <strong>{run.queuePosition ? `Waiting — #${run.queuePosition} in the queue` : 'Waiting for its turn'}</strong>
-          <span>
-            Schools run one at a time. This one starts on its own as soon as the crawl before it finishes;
-            you can leave this page and it will still run.
-          </span>
         </div>
       )}
 
@@ -150,15 +143,13 @@ export function RunMonitorPage({
         <div><span>With an email</span><strong>{run.counts?.emailsFound ?? 0}</strong></div>
         <div><span>Pages read</span><strong>{run.pagesRead ?? 0}{run.stepBudget ? ` / ${run.stepBudget}` : ''}</strong></div>
         <div><span>Schools</span><strong>{run.sitesCompleted ?? 0}/{run.sitesTotal ?? 0} complete</strong></div>
-        <div><span>Skipped / failed</span><strong>{run.sitesSkipped ?? 0} / {run.sitesFailed ?? 0}</strong></div>
+        <div><span>Failed</span><strong>{run.sitesFailed ?? 0}</strong></div>
         <div>
           <span>Programs covered</span>
           <strong>{run.programsTotal ? `${run.programsCovered ?? 0} / ${run.programsTotal}` : '—'}</strong>
         </div>
         <div><span>Operation</span><strong>{run.runType ?? 'Crawl'}</strong></div>
       </div>
-
-      {!finished && !waiting && <p className="muted">This crawl ends when it reaches the page budget, runs out of worthwhile links, has 150 pages in a row with no people, or reaches a configured limit.</p>}
 
       {failedSites.map((site) => (
         <div key={site.id} className="error-banner">
@@ -179,14 +170,6 @@ export function RunMonitorPage({
       {run.status === 'failed' && run.errorMessage && failedSites.length === 0 && <div className="error-banner">The crawl failed: {run.errorMessage}</div>}
       {retryError && <div className="error-banner">{retryError}</div>}
       {stopError && <div className="error-banner">{stopError}</div>}
-
-      {skippedSites.map((site) => (
-        <SkippedNotice
-          key={site.id}
-          busy={retryingSiteId === site.site_id}
-          onCheckAnyway={() => void retrySite(site)}
-        />
-      ))}
 
       <div className="stage-bar">
         {Object.entries(stageLabels).map(([key, label]) => (
@@ -210,7 +193,7 @@ export function RunMonitorPage({
             <div><span>Time</span><strong>{formatDuration(elapsed)}</strong></div>
             <div><span>Model spend</span><strong>{formatUsd(run.spendUsd)}</strong></div>
           </div>
-          {noPeople && <p className="feed-error-note">No people were found on this school. It may not publish its residents, or it may block automated visits — see the schools below for the reason.</p>}
+          {noPeople && <p className="feed-error-note">No people were found on this school.</p>}
           {run.errorMessage && <p className="feed-error-note">{run.errorMessage}</p>}
           <div className="modal-actions">
             {onViewResults ? (
@@ -238,7 +221,7 @@ export function RunMonitorPage({
                     <td>{site.steps_taken ? `${site.steps_taken.toLocaleString()}${site.step_budget ? ` / ${site.step_budget.toLocaleString()}` : ''}` : '—'}</td>
                     <td>{site.coverage?.programs_total ? `${site.coverage.programs_covered ?? 0} / ${site.coverage.programs_total}` : '—'}</td>
                     <td>{(site.records_found ?? 0).toLocaleString()}</td>
-                    <td>{site.error_message ?? site.skip_reason ?? (site.agent_id && site.status === 'running' ? site.agent_id : '')}</td>
+                    <td>{site.error_message ?? (site.agent_id && site.status === 'running' ? site.agent_id : '')}</td>
                   </tr>
                 ))}
               </tbody>
@@ -254,7 +237,7 @@ export function RunMonitorPage({
         </div>
         {(run.feed ?? []).length === 0 ? (
           <p className="activity-empty">
-            {finished ? 'No activity was recorded for this run.' : waiting ? 'Nothing yet — this crawl has not started.' : 'Waiting for the agent to start…'}
+            {finished ? 'No activity was recorded.' : waiting ? 'Not started yet.' : 'Starting…'}
           </p>
         ) : (
           <ol className="activity-list">
@@ -271,10 +254,10 @@ export function RunMonitorPage({
 function ConnectionNotice({ connection }: { connection: Connection }) {
   if (connection === 'live') return null
   const text = connection === 'connecting'
-    ? 'Connecting to the live feed…'
+    ? 'Connecting…'
     : connection === 'reconnecting'
-      ? 'The live feed dropped. Reconnecting — the numbers below refresh every few seconds meanwhile.'
-      : 'No update has arrived for a while. Still trying; the numbers below refresh every few seconds.'
+      ? 'Connection lost. Reconnecting…'
+      : 'No updates for a while. Still trying…'
   return <div className="connection-notice" role="status">{text}</div>
 }
 

@@ -142,7 +142,6 @@ function applyOne(run: Run, event: RunEvent): Run {
         tokensOut: Math.max(num(p.tokens_out) ?? 0, run.tokensOut ?? 0),
         sitesTotal: num(p.sites_total) ?? run.sitesTotal,
         sitesCompleted: num(p.sites_completed) ?? run.sitesCompleted,
-        sitesSkipped: num(p.sites_skipped) ?? run.sitesSkipped,
         sitesFailed: num(p.sites_failed) ?? run.sitesFailed,
         sitesPending: num(p.sites_pending) ?? run.sitesPending,
         traineesFound: Math.max(num(p.trainees_collected) ?? 0, run.traineesFound ?? 0) || undefined,
@@ -212,16 +211,6 @@ function applyOne(run: Run, event: RunEvent): Run {
           records,
           trainees,
         }),
-      }
-    }
-
-    case 'site_skipped': {
-      const reason = str(p.skip_reason) ?? str(p.reason)
-      return {
-        ...run,
-        skipped: true,
-        skipReason: reason,
-        feed: push({ kind: 'note', message: `Skipped: ${reason ?? 'site unchanged since the last crawl'}` }),
       }
     }
 

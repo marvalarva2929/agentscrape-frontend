@@ -173,3 +173,25 @@ export const peopleApi = {
     }
   },
 }
+
+export interface PeopleStats {
+  people: number
+  trainees: number
+  withEmail: number
+}
+
+/** Totals for the given schools only: the database also holds people from schools no longer listed. */
+export async function getPeopleStats(schoolIds: string[]): Promise<PeopleStats> {
+  const none = { people: 0, trainees: 0, withEmail: 0 }
+  if (isMockMode() || schoolIds.length === 0) return none
+  const body = await apiFetch<{
+    total: number
+    by_category: Record<string, number>
+    with_email: number
+  }>(`/people/stats?${schoolIds.map((id) => `site_id=${encodeURIComponent(id)}`).join('&')}`)
+  return {
+    people: body.total,
+    trainees: (body.by_category.resident ?? 0) + (body.by_category.fellow ?? 0),
+    withEmail: body.with_email,
+  }
+}

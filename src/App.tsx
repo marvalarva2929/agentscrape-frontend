@@ -7,9 +7,11 @@ import { applyRunEvent, mergeRun, rememberRun, restoreRun, runsApi, TERMINAL_EVE
 import { isFinished } from './api/runEvents'
 import { ApiError, setUnauthorizedHandler } from './api/client'
 import { AppShell } from './components/layout/AppShell'
+import type { NavItem } from './components/layout/TopNav'
 import { BackendUnavailableState } from './components/common/BackendUnavailableState'
 import { LoadingState } from './components/common/LoadingState'
 import { CrawlWizardPage, type CrawlRequest } from './pages/CrawlWizardPage'
+import { HomePage } from './pages/HomePage'
 import { LoginPage, type LoginResult } from './pages/LoginPage'
 import { PastCrawlsPage } from './pages/PastCrawlsPage'
 import { PersonPage } from './pages/PersonPage'
@@ -23,12 +25,12 @@ import type { Person, PersonStatus } from './types/person'
 import type { Run } from './types/run'
 import { downloadWorkbook } from './utils/excel'
 
-export type Screen = 'main' | 'person' | 'run-monitor' | 'crawl' | 'history' | 'queue'
+export type Screen = 'home' | 'data' | 'person' | 'run-monitor' | 'crawl' | 'history' | 'queue'
 
 const roleOf = (person: Person) => person.trainingType ?? (person.category ? person.category[0].toUpperCase() + person.category.slice(1) : 'Unknown')
 
 function App() {
-  const [screen, setScreen] = useState<Screen>('main')
+  const [screen, setScreen] = useState<Screen>('home')
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [schools, setSchools] = useState<School[]>([])
   const [programs, setPrograms] = useState<Program[]>([])
@@ -51,7 +53,7 @@ function App() {
   const watchingRunId = useRef<string | null>(null)
   // Schools run one at a time, so a crawl started while one is going joins the
   // queue. `busy` is what decides which of those the button offers.
-  const { busy: queueBusy, refresh: refreshQueue } = useQueue(isAuthenticated)
+  const { queue, busy: queueBusy, refresh: refreshQueue } = useQueue(isAuthenticated)
 
   const selectedSchool = useMemo(() => schools.find((school) => school.id === selectedSchoolId) ?? null, [schools, selectedSchoolId])
   const selectedPerson = useMemo(() => people.find((person) => person.id === selectedPersonId) ?? null, [people, selectedPersonId])
@@ -154,7 +156,7 @@ function App() {
   const handleLogout = async () => {
     try { await authApi.logout() } catch { /* the token is dropped locally either way */ }
     stopWatching.current?.()
-    setIsAuthenticated(false); setScreen('main'); setRun(null); setPeople([]); setPrograms([])
+    setIsAuthenticated(false); setScreen('home'); setRun(null); setPeople([]); setPrograms([])
     setSelectedSchoolId(''); setSelectedProgramId(''); setNotice('')
     window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
   }
@@ -301,7 +303,7 @@ function App() {
         const job = await runsApi.startRun({
           schoolId: request.schoolId, schoolUrl: request.schoolUrl, schoolName: request.schoolName, label: request.label,
           maxSpendUsd: request.maxSpendUsd, maxPeople: request.maxPeople, maxTrainees: request.maxTrainees, maxEmails: request.maxEmails,
-          forceRescan: request.forceRescan, includeDirectory: request.includeDirectory,
+          includeDirectory: request.includeDirectory,
         })
         started.push({
           ...job, schoolId: request.schoolId || undefined, schoolName: request.schoolName, label: request.label,
@@ -347,13 +349,22 @@ function App() {
 
   const viewResults = () => {
     const id = run?.schoolId ?? schools.find((school) => school.name === run?.schoolName)?.id
-    go('main')
+    go('data')
     if (id) selectSchool(id)
   }
 
-  return <AppShell onLogout={handleLogout} onNavigateSchools={() => go('main')} onNavigateHistory={() => go('history')} onNavigateCrawl={() => { void navigateToCrawl() }} onNavigateQueue={() => go('queue')} crawlLabel={queueBusy ? 'Add to Queue' : 'Run Crawl'} statusText="Backend online">
-    {screen === 'main' && <main className="page-shell">
-      <div className="page-header-row"><div><div className="breadcrumb">Schools</div><h2>Residency Data</h2></div></div>
+  const active: NavItem | undefined = ({ home: 'home', data: 'data', person: 'data', history: 'history', queue: 'queue', 'run-monitor': 'queue', crawl: 'crawl' } as const)[screen]
+
+  return <AppShell active={active} onLogout={handleLogout} onNavigateHome={() => go('home')} onNavigateSchools={() => go('data')} onNavigateHistory={() => go('history')} onNavigateCrawl={() => { void navigateToCrawl() }} onNavigateQueue={() => go('queue')} crawlLabel={queueBusy ? 'Add to Queue' : 'Run Crawl'} statusText="Backend online">
+    {screen === 'home' && <HomePage
+      schools={schools} queue={queue} onOpenRun={(id) => openFromRoute(id, true)}
+      onViewData={() => go('data')} onViewCrawls={() => go('queue')} onStartCrawl={() => { void navigateToCrawl() }}
+    />}
+    {screen === 'data' && <main className="page-shell">
+      <div className="page-header-row"><h2>Past data</h2><div className="modal-actions">
+        <button className="secondary-button" onClick={() => go('history')}>Past crawls</button>
+        <button className="secondary-button" onClick={() => go('home')}>← Home</button>
+      </div></div>
       <div className="panel-block"><div className="table-controls" style={{ gridTemplateColumns: '1fr 1fr' }}>
         <div className="field-group" style={{ marginTop: 0 }}>
           <label className="input-label" htmlFor="school-select">School</label>
@@ -393,7 +404,7 @@ function App() {
           </div>
           {peopleLoading && <div className="empty-state">Loading people…</div>}
           {!peopleLoading && !dataError && people.length === 0 && (
-            <div className="empty-state">No people have been collected for this {selectedProgramId ? 'program' : 'school'} yet. Choose Run Crawl to collect them.</div>
+            <div className="empty-state">No people have been collected for this {selectedProgramId ? 'program' : 'school'} yet. <button type="button" className="text-button" onClick={() => { void navigateToCrawl() }}>Start a new crawl</button></div>
           )}
           {!peopleLoading && people.length > 0 && filteredPeople.length === 0 && <div className="empty-state">No one matches these filters.</div>}
           {filteredPeople.length > 0 && <div className="table-wrap"><table>
@@ -407,24 +418,26 @@ function App() {
       </>}
     </main>}
     {screen === 'queue' && <main className="page-shell">
-      <div className="page-header-row"><div><div className="breadcrumb">Queue</div><h2>Crawl Queue</h2></div><div className="modal-actions"><button className="primary-button" onClick={() => { void navigateToCrawl() }}>Add schools</button></div></div>
-      <p className="muted">Schools run one at a time: the next starts as soon as the one before it finishes. Running several at once splits one model budget between them and pays each of their startups out of it.</p>
+      <div className="page-header-row"><h2>Running crawls</h2><div className="modal-actions">
+        <button className="primary-button" onClick={() => { void navigateToCrawl() }}>Start a new crawl</button>
+        <button className="secondary-button" onClick={() => go('home')}>← Home</button>
+      </div></div>
       <section className="panel-block"><QueuePanel onOpenRun={(id) => openFromRoute(id, true)} /></section>
     </main>}
     {screen === 'history' && <>
       {dataError && <div className="page-shell"><div className="error-banner">{dataError}</div></div>}
-      <PastCrawlsPage activeRun={run} onBack={() => go('main')} onOpenRun={(id) => openFromRoute(id, true)} />
+      <PastCrawlsPage activeRun={run} onBack={() => go('data')} onOpenRun={(id) => openFromRoute(id, true)} />
     </>}
-    {screen === 'person' && selectedPerson && <PersonPage school={selectedSchool ?? undefined} person={selectedPerson} onBack={() => setScreen('main')} />}
+    {screen === 'person' && selectedPerson && <PersonPage school={selectedSchool ?? undefined} person={selectedPerson} onBack={() => setScreen('data')} />}
     {screen === 'run-monitor' && run && <RunMonitorPage
       run={run} connection={connection}
-      onBack={() => go('main')} onOpenQueue={() => go('queue')} onViewResults={viewResults}
+      onBack={() => go('home')} onOpenQueue={() => go('queue')} onViewResults={viewResults}
       onResume={() => watchRun(run.id)} onStop={stopRun}
     />}
     {screen === 'run-monitor' && !run && <main className="page-shell"><div className="empty-state">Opening the crawl…</div></main>}
     {screen === 'crawl' && <CrawlWizardPage
       schools={schools} initialSchoolId={selectedSchoolId} queueBusy={queueBusy}
-      onCancel={() => go('main')} onStart={startCrawls} onOpenRun={(id) => openFromRoute(id, true)}
+      onCancel={() => go('home')} onStart={startCrawls} onOpenRun={(id) => openFromRoute(id, true)}
     />}
   </AppShell>
 }

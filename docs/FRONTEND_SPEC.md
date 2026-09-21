@@ -235,11 +235,8 @@ may simply have been stopped.
 |---|---|
 | **Completed** | Totals: found, new, missing. Link back to the school. |
 | **Stopped at budget** | "Stopped when it reached the $X budget." Not a failure — everything collected so far is kept and valid. |
-| **Nothing changed (skipped)** | "Nothing has changed since 12 Sep" and a **Check anyway** button. Finishes in seconds and costs nothing. |
 | **Failed** | Short reason. Often a site was unreachable. People previously collected are kept. |
 | **Cancelled** | What was collected before cancelling is kept. |
-
-*The skipped state is built as a component but not yet shown in the monitor.*
 
 ---
 
@@ -251,7 +248,6 @@ Health of the system at a glance:
 
 - Total schools, people, active vs missing
 - **Total spend**
-- **Skip rate** — share of runs skipped because nothing changed
 - **Known-page hit rate** — share of runs where a previously productive page
   paid off again
 
@@ -280,8 +276,7 @@ should trend up.
 
 ### Run status
 
-Queued · Running · Completed · **Stopped at budget** · Cancelled · Failed ·
-(and **Skipped** when nothing changed)
+Queued · Running · Completed · **Stopped at budget** · Cancelled · Failed
 
 ---
 
@@ -305,7 +300,6 @@ Don't design these:
 For whoever builds the new design against the existing app:
 
 - **No Export button** (5.6).
-- **Skipped state not shown** in the Run monitor (5.9).
 - **Staff Overview not built** (5.10).
 - **Past crawls doesn't show which school** a run was for.
 - The app is still named "Residency Monitor", though it now covers everyone at a
