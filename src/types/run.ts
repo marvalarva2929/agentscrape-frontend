@@ -25,6 +25,10 @@ export interface FeedItem {
 export interface Run {
   id: string
   schoolId?: string
+  /**
+   * `queued` is a run waiting its turn: the backend holds it as `pending`
+   * until the model budget is free, and `toRun` maps it across.
+   */
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
   stage?: RunStage
   startedAt?: string
@@ -69,6 +73,10 @@ export interface Run {
   sitesFailed?: number
   sitesPending?: number
   stopReason?: string
+  /** Waiting for its turn rather than running. */
+  queued?: boolean
+  /** 1 is the run that starts next. Absent once it is no longer waiting. */
+  queuePosition?: number
   /** Per-site page ceiling; the crawler may stop earlier once useful leads end. */
   stepBudget?: number
 }

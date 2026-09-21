@@ -8,6 +8,8 @@ export function AppShell({
   onNavigateCrawl,
   onNavigateHistory,
   onNavigateGame,
+  onNavigateQueue,
+  crawlLabel,
   statusText,
 }: {
   children: ReactNode
@@ -16,6 +18,9 @@ export function AppShell({
   onNavigateCrawl?: () => void
   onNavigateHistory?: () => void
   onNavigateGame?: () => void
+  onNavigateQueue?: () => void
+  /** Names what starting a crawl will do: run it now, or join the queue. */
+  crawlLabel?: string
   statusText?: ReactNode
 }) {
   return (
@@ -26,6 +31,8 @@ export function AppShell({
         onNavigateCrawl={onNavigateCrawl}
         onNavigateHistory={onNavigateHistory}
         onNavigateGame={onNavigateGame}
+        onNavigateQueue={onNavigateQueue}
+        crawlLabel={crawlLabel}
         statusText={statusText}
       />
       {children}

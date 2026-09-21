@@ -6,6 +6,8 @@ export function TopNav({
   onNavigateCrawl,
   onNavigateHistory,
   onNavigateGame,
+  onNavigateQueue,
+  crawlLabel,
   statusText,
   children,
 }: {
@@ -14,6 +16,9 @@ export function TopNav({
   onNavigateCrawl?: () => void
   onNavigateHistory?: () => void
   onNavigateGame?: () => void
+  onNavigateQueue?: () => void
+  /** Names what starting a crawl will do: run it now, or join the queue. */
+  crawlLabel?: string
   statusText?: ReactNode
   children?: ReactNode
 }) {
@@ -32,8 +37,11 @@ export function TopNav({
         {onNavigateGame ? (
           <button className="nav-link" onClick={onNavigateGame}>Directory Dash</button>
         ) : null}
+        {onNavigateQueue ? (
+          <button className="nav-link" onClick={onNavigateQueue}>Queue</button>
+        ) : null}
         {onNavigateCrawl ? (
-          <button className="primary-button small-button" onClick={onNavigateCrawl}>Run Crawl</button>
+          <button className="primary-button small-button" onClick={onNavigateCrawl}>{crawlLabel ?? 'Run Crawl'}</button>
         ) : null}
         {children}
       </nav>

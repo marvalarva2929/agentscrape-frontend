@@ -14,13 +14,15 @@ import { PersonPage } from './pages/PersonPage'
 import { RunMonitorPage } from './pages/RunMonitorPage'
 import { DirectoryDashGame } from './components/game/DirectoryDashGame'
 import { SchoolPicker } from './components/schools/SchoolPicker'
+import { QueuePanel } from './components/run/QueuePanel'
+import { useQueue } from './api/useQueue'
 import type { School } from './types/school'
 import type { Program } from './types/program'
 import type { Person, PersonStatus } from './types/person'
 import type { Run } from './types/run'
 import { downloadWorkbook } from './utils/excel'
 
-export type Screen = 'main' | 'person' | 'run-monitor' | 'crawl' | 'history' | 'game'
+export type Screen = 'main' | 'person' | 'run-monitor' | 'crawl' | 'history' | 'game' | 'queue'
 type WizardDraft = { schoolId: string; schoolUrl: string; maxSpendUsd: string; maxPeople: string; maxTrainees: string; maxEmails: string; forceRescan: boolean; includeDirectory: boolean }
 const createWizardDraft = (schoolId = '', schoolUrl = ''): WizardDraft => ({ schoolId, schoolUrl, maxSpendUsd: '10', maxPeople: '', maxTrainees: '', maxEmails: '', forceRescan: false, includeDirectory: false })
 /** A whole-number limit from a form field; blank means no limit, anything else invalid. */
@@ -57,6 +59,9 @@ function App() {
   const [statusFilter, setStatusFilter] = useState<'all' | PersonStatus>('all')
   const stopWatching = useRef<(() => void) | null>(null)
   const watchingRunId = useRef<string | null>(null)
+  // Schools run one at a time, so a crawl started while one is going joins the
+  // queue. `busy` is what decides which of those the button offers.
+  const { busy: queueBusy, refresh: refreshQueue } = useQueue(isAuthenticated)
 
   const selectedSchool = useMemo(() => schools.find((school) => school.id === selectedSchoolId) ?? null, [schools, selectedSchoolId])
   const selectedPerson = useMemo(() => people.find((person) => person.id === selectedPersonId) ?? null, [people, selectedPersonId])
@@ -125,15 +130,35 @@ function App() {
     } catch { setLoading(false); return false }
   }
   const handleLogout = async () => { await authApi.logout(); stopWatching.current?.(); setIsAuthenticated(false); setScreen('main'); setRun(null); setPeople([]); setPrograms([]); setSelectedSchoolId(''); setSelectedProgramId('') }
+  /**
+   * Stop the run being watched.
+   *
+   * The backend records the intent and returns; the workers then unwind on
+   * their own clock, so the row can still read `running` for a moment after.
+   * Polling briefly for a settled status keeps the monitor from sitting on a
+   * stale "running" — and because `cancelRun` treats an already-stopped run
+   * as success, pressing stop twice is not an error either.
+   */
   const stopRun = async () => {
     if (!run) return
-    await runsApi.cancelRun(run.id)
-    const latest = await runsApi.getRun(run.id)
-    setRun((current) => {
+    const runId = run.id
+    await runsApi.cancelRun(runId)
+
+    const apply = (latest: Run) => setRun((current) => {
       const next = { ...mergeRun(current, latest), progress: 100 }
       rememberRun(next)
       return next
     })
+
+    let latest = await runsApi.getRun(runId)
+    apply(latest)
+    for (let attempt = 0; attempt < 10 && !terminal(latest.status); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      latest = await runsApi.getRun(runId)
+      apply(latest)
+    }
+    // Whatever was waiting behind it may now have started.
+    refreshQueue()
   }
   const selectSchool = (id: string) => { setSelectedSchoolId(id); setSelectedProgramId(''); setQuery(''); setDataError(''); syncQuery(id, '') }
 
@@ -212,7 +237,11 @@ function App() {
       const job = await runsApi.startRun({ schoolId: wizardDraft.schoolId, schoolUrl, schoolName, maxSpendUsd: budget, maxPeople, maxTrainees, maxEmails, forceRescan: wizardDraft.forceRescan, includeDirectory })
       const started: Run = { ...job, schoolId: wizardDraft.schoolId || undefined, schoolName, runType: includeDirectory ? 'New Crawl + Directory Search' : 'New Crawl' }
       setRun(started); rememberRun(started)
-      setScreen('run-monitor'); watchRun(job.id)
+      refreshQueue()
+      // A run that is only waiting has no event stream yet, so show it in the
+      // queue rather than on a monitor that would have nothing to report.
+      if (started.status === 'queued') { setScreen('queue') }
+      else { setScreen('run-monitor'); watchRun(job.id) }
     } catch (caught) {
       // Anyone signed in can start a crawl; show what the backend said went
       // wrong (an uncrawled school for a directory search, a bad URL) instead.
@@ -234,7 +263,7 @@ function App() {
   if (!isAuthenticated) return <LoginPage onLogin={handleLogin} />
   if (loading) return <LoadingState message="Loading residency data…" />
   if (error) return <BackendUnavailableState />
-  return <AppShell onLogout={handleLogout} onNavigateSchools={() => setScreen('main')} onNavigateHistory={() => setScreen('history')} onNavigateGame={() => setScreen('game')} onNavigateCrawl={() => { void navigateToCrawl() }} statusText="Backend online">
+  return <AppShell onLogout={handleLogout} onNavigateSchools={() => setScreen('main')} onNavigateHistory={() => setScreen('history')} onNavigateGame={() => setScreen('game')} onNavigateCrawl={() => { void navigateToCrawl() }} onNavigateQueue={() => setScreen('queue')} crawlLabel={queueBusy ? 'Add to Queue' : 'Run Crawl'} statusText="Backend online">
     {screen === 'main' && <main className="page-shell">
       <div className="page-header-row"><div><div className="breadcrumb">Schools</div><h2>Residency Data</h2></div></div>
       <div className="panel-block"><div className="table-controls" style={{ gridTemplateColumns: '1fr 1fr' }}>
@@ -246,6 +275,11 @@ function App() {
       {selectedSchoolId && selectedSchool && <><div className="summary-row"><div className="summary-card"><div className="summary-label">People shown</div><div className="summary-value">{filteredPeople.length}</div></div><div className="summary-card"><div className="summary-label">Residents</div><div className="summary-value">{filteredPeople.filter((person) => person.trainingType === 'Resident').length}</div></div><div className="summary-card"><div className="summary-label">Fellows</div><div className="summary-value">{filteredPeople.filter((person) => person.trainingType === 'Fellow').length}</div></div></div>
         <div className="table-panel"><div className="table-controls"><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search name or email" /><select value={trainingFilter} onChange={(event) => setTrainingFilter(event.target.value as 'all' | 'Resident' | 'Fellow')}><option value="all">All roles</option><option value="Resident">Resident</option><option value="Fellow">Fellow</option></select><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | PersonStatus)}><option value="all">All statuses</option><option value="new">New</option><option value="active">Active</option><option value="stale">Stale</option></select><button className="secondary-button" onClick={exportPeople} disabled={exporting}>{exporting ? 'Preparing Excel…' : 'Download Excel'}</button></div><div className="table-wrap"><table><thead><tr><th>Name</th><th>Role</th><th>Position</th><th>Year</th><th>Specialty</th><th>Email</th><th>Status</th><th>Last seen</th></tr></thead><tbody>{filteredPeople.map((person) => <tr key={person.id} className="clickable-row" onClick={() => { setSelectedPersonId(person.id); setScreen('person') }}><td>{person.name}</td><td>{person.trainingType ?? person.category ?? '—'}</td><td>{person.position ?? '—'}</td><td>{person.year ?? '—'}</td><td>{person.specialty ?? '—'}</td><td>{person.email ?? '—'}</td><td><span className={`status-badge ${person.status}`}>{person.status}</span></td><td>{formatDate(person.lastVerified)}</td></tr>)}</tbody></table></div></div></>}
     </main>}
+    {screen === 'queue' && <main className="page-shell">
+      <div className="page-header-row"><div><div className="breadcrumb">Queue</div><h2>Crawl Queue</h2></div></div>
+      <p className="muted">Schools run one at a time: the next starts as soon as the one before it finishes. Running three at once splits one model budget three ways and pays three startups out of it.</p>
+      <section className="panel-block"><QueuePanel /></section>
+    </main>}
     {screen === 'history' && <PastCrawlsPage activeRun={run} onBack={() => setScreen('main')} onOpenRun={(id) => { void openRun(id).catch(() => setDataError('Could not open crawl details.')) }} />}
     {screen === 'person' && selectedPerson && <PersonPage school={selectedSchool ?? undefined} person={selectedPerson} onBack={() => setScreen('main')} />}
     {screen === 'game' && <DirectoryDashGame schoolName={selectedSchool?.name ?? 'Directory Dash'} status="ready" peopleFound={0} emailsFound={0} runFinished={false} onClose={() => setScreen('main')} />}
@@ -253,7 +287,8 @@ function App() {
     {screen === 'crawl' && (() => {
       const crawlSchool = schools.find((school) => school.id === wizardDraft.schoolId)
       return <main className="page-shell narrow-shell">
-        <div className="page-header-row"><div><div className="breadcrumb">Run Crawl</div><h2>Run Crawl</h2></div></div>
+        <div className="page-header-row"><div><div className="breadcrumb">{queueBusy ? 'Add to Queue' : 'Run Crawl'}</div><h2>{queueBusy ? 'Add to Queue' : 'Run Crawl'}</h2></div></div>
+        {queueBusy && <><p className="muted">A crawl is already running. This school joins the queue and starts on its own when that one finishes.</p><section className="panel-block"><QueuePanel compact /></section></>}
         <section className="panel-block">
           <div className="field-group"><label className="input-label">School</label><SchoolPicker schools={schools} value={wizardDraft.schoolId} onSelect={(school) => setWizardDraft((current) => ({ ...current, schoolId: school.id, schoolUrl: school.canonicalUrl ?? '', includeDirectory: false }))} onClear={() => setWizardDraft((current) => ({ ...current, schoolId: '', schoolUrl: '', includeDirectory: false }))} /></div>
           <div className="field-group"><label className="input-label">School URL</label><input value={wizardDraft.schoolUrl} onChange={(event) => setWizardDraft((current) => ({ ...current, schoolUrl: event.target.value, includeDirectory: false }))} placeholder="https://school.edu" /></div>
@@ -263,7 +298,7 @@ function App() {
           <label className="checkbox-row"><input type="checkbox" checked={wizardDraft.forceRescan} onChange={(event) => setWizardDraft((current) => ({ ...current, forceRescan: event.target.checked }))} /><span>Force rescan</span></label>
           <div className="review-box"><div className="review-row"><span>Operation</span><strong>{wizardDraft.includeDirectory && crawlSchool?.directoryUrl ? 'Crawl + Directory Search' : 'Crawl'}</strong></div><div className="review-row"><span>School</span><strong>{crawlSchool?.name ?? wizardDraft.schoolUrl ?? '—'}</strong></div><div className="review-row"><span>Stops at</span><strong>{[wizardDraft.maxSpendUsd && `$${wizardDraft.maxSpendUsd}`, wizardDraft.maxPeople && `${wizardDraft.maxPeople} people`, wizardDraft.maxTrainees && `${wizardDraft.maxTrainees} residents & fellows`, wizardDraft.maxEmails && `${wizardDraft.maxEmails} emails`].filter(Boolean).join(' · ') || 'No limit'}</strong></div></div>
           {wizardError && <div className="error-banner">{wizardError}</div>}
-          <div className="modal-actions"><button className="secondary-button" onClick={() => setScreen('main')}>Cancel</button><button className="primary-button" onClick={() => void handleSubmitWizard()}>Start Crawl</button></div>
+          <div className="modal-actions"><button className="secondary-button" onClick={() => setScreen('main')}>Cancel</button><button className="primary-button" onClick={() => void handleSubmitWizard()}>{queueBusy ? 'Add to Queue' : 'Start Crawl'}</button></div>
         </section>
       </main>
     })()}

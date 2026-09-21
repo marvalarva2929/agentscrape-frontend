@@ -1,5 +1,7 @@
-import { apiFetch, fetchAllPages, getApiBaseUrl, isMockMode, tokenStore } from './client'
+import { ApiError, apiFetch, fetchAllPages, getApiBaseUrl, isMockMode, tokenStore } from './client'
 import type { FeedItem, Run } from '../types/run'
+import type { RunQueue } from '../types/queue'
+import { EMPTY_QUEUE } from '../types/queue'
 import { mockRunStream, mockRuns } from '../mocks/runs'
 
 export interface StartRunRequest {
@@ -44,6 +46,8 @@ interface RunResponse {
   started_at?: string | null
   finished_at?: string | null
   error_message?: string | null
+  queued?: boolean
+  queue_position?: number | null
 }
 
 const elapsed = (startedAt?: string | null, finishedAt?: string | null): number => {
@@ -52,9 +56,22 @@ const elapsed = (startedAt?: string | null, finishedAt?: string | null): number 
   return Math.max(0, Math.round((end - Date.parse(startedAt)) / 1000))
 }
 
+/**
+ * The backend holds a waiting run as `pending`, and reports a run that hit one
+ * of its limits as `stopped_at_limit`. Neither word exists in the UI's own
+ * vocabulary, so both are translated here rather than leaking into every
+ * status check: an untranslated `pending` read as "not finished", which kept
+ * the stop button live on a run that was only waiting.
+ */
+const toStatus = (raw: string): Run['status'] => {
+  if (raw === 'stopped_at_limit') return 'completed'
+  if (raw === 'pending') return 'queued'
+  return raw as Run['status']
+}
+
 const toRun = (raw: RunResponse): Run => ({
   id: raw.id,
-  status: raw.status === 'stopped_at_limit' ? 'completed' : (raw.status as Run['status']),
+  status: toStatus(raw.status),
   startedAt: raw.started_at ?? undefined,
   schoolName: raw.label ?? undefined,
   finishedAt: raw.finished_at ?? undefined,
@@ -82,6 +99,8 @@ const toRun = (raw: RunResponse): Run => ({
   errorMessage: raw.error_message ?? undefined,
   // A run that hit one of its limits is finished with valid partial results, not failed.
   stoppedAtLimit: LIMIT_REASONS.has(raw.stop_reason ?? ''),
+  queued: raw.queued ?? raw.status === 'pending',
+  queuePosition: raw.queue_position ?? undefined,
 })
 
 const LIMIT_REASONS = new Set(['max_spend', 'max_records', 'max_trainees', 'max_emails'])
@@ -134,6 +153,10 @@ export const runsApi = {
           force_rescan: payload.forceRescan ?? false,
           label: payload.schoolName ?? null,
           modes: payload.includeDirectory ? ['crawl', 'directory'] : ['crawl'],
+          // Schools run one at a time. The model budget is one process-wide
+          // allowance, so runs started side by side split it between them and
+          // each still pays its own discovery and ranking startup in full.
+          queued: true,
         },
       }),
     })
@@ -155,6 +178,15 @@ export const runsApi = {
     return rows.map(toRun)
   },
 
+  /**
+   * Stop a run. Succeeds when the run has already stopped.
+   *
+   * A run can finish between the stop button being drawn and pressed, and an
+   * older backend answers that with 409 RUN_NOT_CANCELLABLE. Either way the
+   * crawl is stopped, which is what was asked for, so it is not an error to
+   * report. The timeout is generous because the request returns only once the
+   * backend has recorded the intent.
+   */
   async cancelRun(id: string): Promise<void> {
     if (isMockMode()) {
       const run = mockRuns[id]
@@ -164,7 +196,20 @@ export const runsApi = {
       }
       return
     }
-    await apiFetch<void>(`/runs/${id}/cancel`, { method: 'POST' })
+    try {
+      await apiFetch<void>(`/runs/${id}/cancel`, { method: 'POST', timeoutMs: 60000 })
+    } catch (error) {
+      const alreadyStopped =
+        error instanceof ApiError &&
+        (error.backendCode === 'RUN_NOT_CANCELLABLE' || error.status === 409)
+      if (!alreadyStopped) throw error
+    }
+  },
+
+  /** The whole queue: what is running, what is waiting, and in what order. */
+  async getQueue(): Promise<RunQueue> {
+    if (isMockMode()) return EMPTY_QUEUE
+    return apiFetch<RunQueue>('/runs/queue')
   },
 
   /** Per-site status. The authoritative snapshot for resyncing after a reconnect. */
@@ -376,7 +421,9 @@ export function mergeRun(current: Run | null | undefined, latest: Run): Run {
   return {
     ...merged,
     // A row read between "created" and "started" still says queued; the stream
-    // has already proved otherwise.
+    // has already proved otherwise. This only began to bite once `toRun`
+    // translated the backend's `pending`: before that the row arrived as the
+    // untranslated word and never matched, so the stale status won.
     status: current.status === 'running' && latest.status === 'queued' ? 'running' : merged.status,
     stage: finished ? (latest.stage ?? current.stage ?? 'complete') : (current.stage ?? latest.stage),
     feed: current.feed?.length ? current.feed : latest.feed,

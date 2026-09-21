@@ -1433,3 +1433,52 @@ td {
   font-size: 0.8rem;
   color: #5d6f7c;
 }
+
+/* --- run queue ---------------------------------------------------------- */
+.queue-list { display: flex; flex-direction: column; gap: 10px; }
+
+.queue-row {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 12px;
+  align-items: start;
+  padding: 14px 16px;
+  border: 1px solid var(--border, #d9dee5);
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: var(--panel, #fff);
+}
+.queue-row.running { border-left-color: #1f9d55; }
+.queue-row.waiting { border-left-color: #c68a00; }
+.queue-row.stalled { border-left-color: #c0392b; }
+
+.queue-position {
+  font-weight: 700;
+  font-size: 18px;
+  text-align: center;
+  line-height: 1.4;
+  color: var(--muted-text, #6b7480);
+}
+.queue-row.running .queue-position { color: #1f9d55; }
+
+.queue-body { min-width: 0; }
+.queue-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.queue-meta { margin-top: 2px; font-size: 13px; }
+
+.status-badge.running { background: #e4f5ec; color: #1f6f45; }
+.status-badge.waiting { background: #fdf3dd; color: #8a6100; }
+.status-badge.stalled { background: #fbe6e3; color: #932c20; }
+
+.queue-sites { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.queue-sites li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+.queue-site-domain { font-weight: 600; word-break: break-all; }
+
+@media (max-width: 600px) {
+  .queue-row { grid-template-columns: 28px 1fr; padding: 12px; }
+}
