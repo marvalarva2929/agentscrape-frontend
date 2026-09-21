@@ -173,7 +173,9 @@ function App() {
       setRun({ ...job, schoolId: wizardDraft.schoolId || undefined, schoolName, runType: includeDirectory ? 'New Crawl + Directory Search' : 'New Crawl' })
       setScreen('run-monitor'); watchRun(job.id)
     } catch (caught) {
-      setWizardError(caught instanceof ApiError && caught.status === 403 ? 'Your current backend permission cannot start a crawl. Ask the backend administrator to grant crawl permission.' : 'Could not start the crawl. Check the URL and backend connection, then try again.')
+      // Anyone signed in can start a crawl; show what the backend said went
+      // wrong (an uncrawled school for a directory search, a bad URL) instead.
+      setWizardError(caught instanceof ApiError && caught.message ? caught.message : 'Could not start the crawl. Check the URL and backend connection, then try again.')
     }
   }
   const exportPeople = () => {
