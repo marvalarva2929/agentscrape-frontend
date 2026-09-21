@@ -17,6 +17,7 @@ interface RunResponse {
   status: string
   stop_reason?: string | null
   label?: string | null
+  school_name?: string | null
   sites_total: number
   sites_completed: number
   sites_skipped: number
@@ -54,7 +55,7 @@ const toRun = (raw: RunResponse): Run => ({
     missingCount: raw.records_missing,
   },
   spendUsd: raw.spend_usd,
-  schoolName: raw.label ?? undefined,
+  schoolName: raw.school_name ?? raw.label ?? undefined,
   maxSpendUsd: raw.max_spend_usd ?? undefined,
   // A run that hit its budget is finished with valid partial results, not failed.
   stoppedAtLimit: raw.stop_reason === 'max_spend' || raw.stop_reason === 'max_records',

@@ -6,20 +6,14 @@ export function AppShell({
   onLogout,
   onNavigateSchools,
   onNavigateCrawl,
-  onNavigateSubmit,
   onNavigateHistory,
-  onNavigateAdmin,
-  isAdmin,
   statusText,
 }: {
   children: ReactNode
   onLogout: () => void
   onNavigateSchools: () => void
   onNavigateCrawl: () => void
-  onNavigateSubmit?: () => void
   onNavigateHistory?: () => void
-  onNavigateAdmin?: () => void
-  isAdmin?: boolean
   statusText?: ReactNode
 }) {
   return (
@@ -28,10 +22,7 @@ export function AppShell({
         onLogout={onLogout}
         onNavigateSchools={onNavigateSchools}
         onNavigateCrawl={onNavigateCrawl}
-        onNavigateSubmit={onNavigateSubmit}
         onNavigateHistory={onNavigateHistory}
-        onNavigateAdmin={onNavigateAdmin}
-        isAdmin={isAdmin}
         statusText={statusText}
       />
       {children}

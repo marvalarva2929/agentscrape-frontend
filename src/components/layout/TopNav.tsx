@@ -4,20 +4,14 @@ export function TopNav({
   onLogout,
   onNavigateSchools,
   onNavigateCrawl,
-  onNavigateSubmit,
   onNavigateHistory,
-  onNavigateAdmin,
-  isAdmin,
   statusText,
   children,
 }: {
   onLogout: () => void
   onNavigateSchools: () => void
   onNavigateCrawl: () => void
-  onNavigateSubmit?: () => void
   onNavigateHistory?: () => void
-  onNavigateAdmin?: () => void
-  isAdmin?: boolean
   statusText?: ReactNode
   children?: ReactNode
 }) {
@@ -32,13 +26,6 @@ export function TopNav({
         <button className="nav-link" onClick={onNavigateSchools}>Programs</button>
         {onNavigateHistory ? (
           <button className="nav-link" onClick={onNavigateHistory}>Past crawls</button>
-        ) : null}
-        {onNavigateSubmit ? (
-          <button className="nav-link" onClick={onNavigateSubmit}>Request schools</button>
-        ) : null}
-        {/* Staff only: launching runs is billable. */}
-        {isAdmin && onNavigateAdmin ? (
-          <button className="nav-link" onClick={onNavigateAdmin}>Admin</button>
         ) : null}
         <button className="primary-button small-button" onClick={onNavigateCrawl}>CRAWL / UPDATE</button>
         {children}
