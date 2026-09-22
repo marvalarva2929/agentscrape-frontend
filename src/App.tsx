@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { authApi } from './api/auth'
 import { schoolsApi } from './api/schools'
-import { peopleApi } from './api/people'
+import { peopleApi, pollVerification } from './api/people'
 import { applyRunEvent, mergeRun, rememberRun, restoreRun, runsApi, TERMINAL_EVENTS, type Connection } from './api/runs'
 import { isFinished } from './api/runEvents'
 import { ApiError, setUnauthorizedHandler } from './api/client'
@@ -46,6 +46,8 @@ function App() {
   const [dataError, setDataError] = useState('')
   const [notice, setNotice] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [verifyNotice, setVerifyNotice] = useState('')
   const [query, setQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState<'all' | PersonStatus>('all')
@@ -192,7 +194,7 @@ function App() {
     // Whatever was waiting behind it may now have started.
     refreshQueue()
   }
-  const selectSchool = (id: string) => { setSelectedSchoolId(id); setSelectedProgramId(''); setQuery(''); setRoleFilter('all'); setStatusFilter('all'); setDataError(''); syncQuery(id, '') }
+  const selectSchool = (id: string) => { setSelectedSchoolId(id); setSelectedProgramId(''); setQuery(''); setRoleFilter('all'); setStatusFilter('all'); setDataError(''); setVerifyNotice(''); syncQuery(id, '') }
 
   /**
    * Follow a run's event stream. The subscription lives here rather than in the
@@ -343,6 +345,42 @@ function App() {
     } catch { setDataError('Could not create the Excel workbook. Please try again.') } finally { setExporting(false) }
   }
 
+  /** Re-fetches whatever's on screen (a program's roster, or a whole school's). */
+  const refreshPeople = async () => {
+    const refreshed = selectedProgramId
+      ? await peopleApi.listPeopleForProgram(selectedProgramId)
+      : await peopleApi.listPeopleForSchool(selectedSchoolId)
+    setPeople(refreshed)
+  }
+
+  /**
+   * Re-checks the rows currently shown against their stored source page,
+   * confirming every role each person's page actually supports (someone can
+   * be both faculty and a fellow, but the crawl stores only one). Manual
+   * only — the crawler never runs this on its own.
+   */
+  const verifyPeople = async () => {
+    if (filteredPeople.length === 0) return
+    setVerifying(true); setVerifyNotice(''); setDataError('')
+    try {
+      const job = await peopleApi.startVerification({ recordIds: filteredPeople.map((person) => person.id) })
+      const finished = await pollVerification(job.id)
+      if (finished.status === 'failed') {
+        setDataError(finished.error || 'Verification failed. Please try again.')
+      } else {
+        setVerifyNotice(
+          `Checked ${finished.recordsChecked} of ${finished.recordsTotal} against their source page — `
+          + `${finished.recordsCorrected} label${finished.recordsCorrected === 1 ? '' : 's'} corrected.`,
+        )
+        await refreshPeople()
+      }
+    } catch {
+      setDataError('Could not verify these records. Please try again.')
+    } finally {
+      setVerifying(false)
+    }
+  }
+
   if (!isAuthenticated) return <LoginPage onLogin={handleLogin} notice={notice} />
   if (loading) return <LoadingState message="Loading residency data…" />
   if (error) return <BackendUnavailableState />
@@ -401,7 +439,11 @@ function App() {
               <option value="all">All statuses</option><option value="new">New</option><option value="active">Active</option><option value="changed">Changed</option><option value="stale">Stale</option>
             </select>
             <button className="secondary-button" onClick={exportPeople} disabled={exporting || filteredPeople.length === 0}>{exporting ? 'Preparing Excel…' : 'Download Excel'}</button>
+            <button className="secondary-button" onClick={() => { void verifyPeople() }} disabled={verifying || filteredPeople.length === 0}>
+              {verifying ? 'Verifying…' : `Verify ${filteredPeople.length} row${filteredPeople.length === 1 ? '' : 's'}`}
+            </button>
           </div>
+          {verifyNotice && <div className="info-banner">{verifyNotice}</div>}
           {peopleLoading && <div className="empty-state">Loading people…</div>}
           {!peopleLoading && !dataError && people.length === 0 && (
             <div className="empty-state">No people have been collected for this {selectedProgramId ? 'program' : 'school'} yet. <button type="button" className="text-button" onClick={() => { void navigateToCrawl() }}>Start a new crawl</button></div>
@@ -428,7 +470,7 @@ function App() {
       {dataError && <div className="page-shell"><div className="error-banner">{dataError}</div></div>}
       <PastCrawlsPage activeRun={run} onBack={() => go('data')} onOpenRun={(id) => openFromRoute(id, true)} />
     </>}
-    {screen === 'person' && selectedPerson && <PersonPage school={selectedSchool ?? undefined} person={selectedPerson} onBack={() => setScreen('data')} />}
+    {screen === 'person' && selectedPerson && <PersonPage school={selectedSchool ?? undefined} person={selectedPerson} onBack={() => setScreen('data')} onVerified={() => { void refreshPeople() }} />}
     {screen === 'run-monitor' && run && <RunMonitorPage
       run={run} connection={connection}
       onBack={() => go('home')} onOpenQueue={() => go('queue')} onViewResults={viewResults}

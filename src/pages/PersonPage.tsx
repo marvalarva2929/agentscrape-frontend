@@ -1,31 +1,67 @@
 import { useEffect, useState } from 'react'
 
-import { peopleApi } from '../api/people'
+import { peopleApi, pollVerification } from '../api/people'
 import { SourceScreenshot } from '../components/source/SourceScreenshot'
 import type { SourceProvenance } from '../types/source'
 import type { Person, PersonVersion } from '../types/person'
 import type { School } from '../types/school'
 
+/** A person can hold more than one role at once (faculty *and* a fellow);
+ * once a verification job has confirmed that, show all of them. */
+const roleLabel = (person: Person) => {
+  if (person.roles && person.roles.length > 0) {
+    return person.roles.map((role) => role[0].toUpperCase() + role.slice(1)).join(', ')
+  }
+  return person.trainingType ?? person.category
+}
+
 export function PersonPage({
   school,
   person,
   onBack,
+  onVerified,
 }: {
   school?: School
   person: Person
   onBack: () => void
+  /** Called after a verification job for this person finishes, so the caller
+   * can refetch and pass down the (possibly corrected) record. */
+  onVerified?: () => void
 }) {
   // Only fields the page actually stated. Nothing is inferred, so a blank
   // simply means the institution did not publish it.
   const sourceFields = [
     ['Name', person.name],
     ['Email', person.email],
-    ['Role', person.trainingType ?? person.category],
+    ['Role', roleLabel(person)],
     ['Position', person.position],
     ['Year', person.year],
     ['Specialty', person.specialty],
     ['Class of', person.graduationYear],
   ].filter(([, value]) => Boolean(value)) as Array<[string, string]>
+
+  const [verifying, setVerifying] = useState(false)
+  const [verifyNotice, setVerifyNotice] = useState('')
+
+  const verifyPerson = async () => {
+    setVerifying(true); setVerifyNotice('')
+    try {
+      const job = await peopleApi.startVerification({ recordIds: [person.id] })
+      const finished = await pollVerification(job.id)
+      if (finished.status === 'failed') {
+        setVerifyNotice(finished.error || 'Could not check this record. Please try again.')
+      } else if (finished.recordsChecked === 0) {
+        setVerifyNotice('Could not re-read the source page for this record.')
+      } else {
+        setVerifyNotice(finished.recordsCorrected > 0 ? 'Role label updated from the source page.' : 'Confirmed: the source page supports no other role.')
+        onVerified?.()
+      }
+    } catch {
+      setVerifyNotice('Could not check this record. Please try again.')
+    } finally {
+      setVerifying(false)
+    }
+  }
 
   const [source, setSource] = useState<SourceProvenance | null>(null)
   const [sourceState, setSourceState] = useState<'loading' | 'ready' | 'failed'>('loading')
@@ -67,8 +103,15 @@ export function PersonPage({
             <StatusBadge status={person.status} />
           </div>
         </div>
-        <button className="secondary-button" onClick={onBack}>Back to school</button>
+        <div style={{ display: 'flex', gap: '0.8rem' }}>
+          <button className="secondary-button" onClick={() => { void verifyPerson() }} disabled={verifying}>
+            {verifying ? 'Verifying…' : 'Verify against source'}
+          </button>
+          <button className="secondary-button" onClick={onBack}>Back to school</button>
+        </div>
       </div>
+
+      {verifyNotice && <div className="info-banner">{verifyNotice}</div>}
 
       <section className="detail-section">
         <div className="section-title-row">

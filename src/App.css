@@ -1158,6 +1158,15 @@ td {
   border: 1px solid #f5c2bd;
 }
 
+.info-banner {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #eafaf1;
+  color: #14532d;
+  border: 1px solid #bbf0d0;
+}
+
 .muted {
   color: #6b7280;
 }

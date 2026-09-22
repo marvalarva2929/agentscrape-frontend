@@ -52,4 +52,9 @@ export interface Person {
   sourceAvailable?: boolean
   confidence?: number
   versionHistory?: PersonVersion[]
+  /** Every role a verification pass confirmed the source page supports for
+   * this person, e.g. both "faculty" and "fellow". Undefined until a
+   * verification job has run for this record. */
+  roles?: PersonCategory[]
+  rolesCheckedAt?: string
 }

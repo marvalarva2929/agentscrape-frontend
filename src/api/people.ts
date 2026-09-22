@@ -30,6 +30,8 @@ interface PersonResponse {
   last_changed_at?: string | null
   missing_since?: string | null
   screenshot_available: boolean
+  roles?: Category[] | null
+  roles_checked_at?: string | null
 }
 
 interface VersionResponse {
@@ -87,6 +89,8 @@ const toPerson = (raw: PersonResponse): Person => ({
   sourceAvailable: raw.screenshot_available,
   confidence: raw.confidence,
   isMissing: raw.status === 'missing',
+  roles: raw.roles ?? undefined,
+  rolesCheckedAt: raw.roles_checked_at ?? undefined,
 })
 
 /** Missing people stay in the table but sort to the bottom. */
@@ -172,6 +176,79 @@ export const peopleApi = {
       fieldLocations: raw.field_locations ?? undefined,
     }
   },
+
+  /**
+   * Re-check already-scraped records' role labels against their stored
+   * source page. Manual only — give `siteId` to check everything currently
+   * on file for that school, or `recordIds` to check just those rows.
+   * Returns immediately with a job id; poll `getVerificationStatus`.
+   */
+  async startVerification(params: { siteId?: string; recordIds?: string[] }): Promise<VerificationJob> {
+    if (isMockMode()) {
+      return Promise.resolve({
+        id: 'mock-verify-job', status: 'completed',
+        recordsTotal: params.recordIds?.length ?? 0,
+        recordsChecked: params.recordIds?.length ?? 0,
+        recordsCorrected: 0, error: null,
+      })
+    }
+    return toVerificationJob(
+      await apiFetch<VerificationJobResponse>('/people/verify', {
+        method: 'POST',
+        body: JSON.stringify({ site_id: params.siteId, record_ids: params.recordIds }),
+      }),
+    )
+  },
+
+  async getVerificationStatus(jobId: string): Promise<VerificationJob> {
+    if (isMockMode()) {
+      return Promise.resolve({
+        id: jobId, status: 'completed', recordsTotal: 0, recordsChecked: 0,
+        recordsCorrected: 0, error: null,
+      })
+    }
+    return toVerificationJob(await apiFetch<VerificationJobResponse>(`/people/verify/${jobId}`))
+  },
+}
+
+interface VerificationJobResponse {
+  id: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  site_id?: string | null
+  record_ids?: string[] | null
+  records_total: number
+  records_checked: number
+  records_corrected: number
+  error?: string | null
+}
+
+export interface VerificationJob {
+  id: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  recordsTotal: number
+  recordsChecked: number
+  recordsCorrected: number
+  error?: string | null
+}
+
+const toVerificationJob = (raw: VerificationJobResponse): VerificationJob => ({
+  id: raw.id, status: raw.status, recordsTotal: raw.records_total,
+  recordsChecked: raw.records_checked, recordsCorrected: raw.records_corrected,
+  error: raw.error ?? null,
+})
+
+/** Poll a verification job to completion, or give up after `timeoutMs`. */
+export async function pollVerification(
+  jobId: string,
+  { intervalMs = 1500, timeoutMs = 5 * 60 * 1000 }: { intervalMs?: number; timeoutMs?: number } = {},
+): Promise<VerificationJob> {
+  const startedAt = Date.now()
+  for (;;) {
+    const job = await peopleApi.getVerificationStatus(jobId)
+    if (job.status === 'completed' || job.status === 'failed') return job
+    if (Date.now() - startedAt > timeoutMs) return job
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
 }
 
 export interface PeopleStats {
