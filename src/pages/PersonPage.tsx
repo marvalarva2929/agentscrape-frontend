@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 
 import { peopleApi } from '../api/people'
-import { SourceScreenshot } from '../components/source/SourceScreenshot'
 import type { SourceProvenance } from '../types/source'
 import type { Person, PersonVersion } from '../types/person'
 import type { School } from '../types/school'
@@ -106,13 +105,9 @@ export function PersonPage({
           <div><span>Method</span><strong>{source?.extractionMethod ?? '—'}</strong></div>
         </div>
 
-        {/* The screenshot replaces the old text snippet: it shows the page as
-            it looked, with boxes over the exact fields that were read. */}
-        {source
-          ? <SourceScreenshot source={source} />
-          : sourceState === 'failed'
+        {!source && (sourceState === 'failed'
             ? <p className="muted">The source for this person could not be loaded. The details above are still what the page stated.</p>
-            : <p className="muted">Loading source…</p>}
+            : <p className="muted">Loading source…</p>)}
       </section>
 
       {history.length > 0 && (
