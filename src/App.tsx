@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { authApi } from './api/auth'
 import { schoolsApi } from './api/schools'
-import { peopleApi, pollVerification } from './api/people'
+import { describeVerification, peopleApi, pollVerification } from './api/people'
 import { applyRunEvent, mergeRun, rememberRun, restoreRun, runsApi, TERMINAL_EVENTS, type Connection } from './api/runs'
 import { isFinished } from './api/runEvents'
 import { ApiError, setUnauthorizedHandler } from './api/client'
@@ -48,6 +48,8 @@ function App() {
   const [exporting, setExporting] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [verifyNotice, setVerifyNotice] = useState('')
+  // Only the most recent Verify click is followed; changing school stops it.
+  const verifyTicket = useRef(0)
   const [query, setQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState<'all' | PersonStatus>('all')
@@ -194,7 +196,7 @@ function App() {
     // Whatever was waiting behind it may now have started.
     refreshQueue()
   }
-  const selectSchool = (id: string) => { setSelectedSchoolId(id); setSelectedProgramId(''); setQuery(''); setRoleFilter('all'); setStatusFilter('all'); setDataError(''); setVerifyNotice(''); syncQuery(id, '') }
+  const selectSchool = (id: string) => { setSelectedSchoolId(id); setSelectedProgramId(''); setQuery(''); setRoleFilter('all'); setStatusFilter('all'); setDataError(''); setVerifyNotice(''); verifyTicket.current += 1; syncQuery(id, '') }
 
   /**
    * Follow a run's event stream. The subscription lives here rather than in the
@@ -354,30 +356,35 @@ function App() {
   }
 
   /**
-   * Re-checks the rows currently shown against their stored source page,
-   * confirming every role each person's page actually supports (someone can
-   * be both faculty and a fellow, but the crawl stores only one). Manual
-   * only — the crawler never runs this on its own.
+   * Queues a re-check of the rows currently shown against their stored source
+   * page, confirming every role each person's page actually supports (someone
+   * can be both faculty and a fellow, but the crawl stores only one). It waits
+   * its turn in the run queue like a crawl; the notice follows it from there.
    */
   const verifyPeople = async () => {
     if (filteredPeople.length === 0) return
+    const ticket = ++verifyTicket.current
+    const stale = () => verifyTicket.current !== ticket
     setVerifying(true); setVerifyNotice(''); setDataError('')
     try {
       const job = await peopleApi.startVerification({ recordIds: filteredPeople.map((person) => person.id) })
-      const finished = await pollVerification(job.id)
-      if (finished.status === 'failed') {
-        setDataError(finished.error || 'Verification failed. Please try again.')
-      } else {
-        setVerifyNotice(
-          `Checked ${finished.recordsChecked} of ${finished.recordsTotal} against their source page — `
-          + `${finished.recordsCorrected} label${finished.recordsCorrected === 1 ? '' : 's'} corrected.`,
-        )
+      setVerifyNotice(describeVerification(job))
+      refreshQueue()
+      setVerifying(false)
+      const finished = await pollVerification(job.id, {
+        isCancelled: stale,
+        onUpdate: (update) => setVerifyNotice(describeVerification(update)),
+      })
+      if (finished?.status === 'failed') {
+        setVerifyNotice('')
+        setDataError(describeVerification(finished))
+      } else if (finished) {
         await refreshPeople()
       }
     } catch {
-      setDataError('Could not verify these records. Please try again.')
+      if (!stale()) setDataError('Could not verify these records. Please try again.')
     } finally {
-      setVerifying(false)
+      if (!stale()) setVerifying(false)
     }
   }
 
@@ -440,7 +447,7 @@ function App() {
             </select>
             <button className="secondary-button" onClick={exportPeople} disabled={exporting || filteredPeople.length === 0}>{exporting ? 'Preparing Excel…' : 'Download Excel'}</button>
             <button className="secondary-button" onClick={() => { void verifyPeople() }} disabled={verifying || filteredPeople.length === 0}>
-              {verifying ? 'Verifying…' : `Verify ${filteredPeople.length} row${filteredPeople.length === 1 ? '' : 's'}`}
+              {verifying ? 'Adding to queue…' : `Verify ${filteredPeople.length} row${filteredPeople.length === 1 ? '' : 's'}`}
             </button>
           </div>
           {verifyNotice && <div className="info-banner">{verifyNotice}</div>}

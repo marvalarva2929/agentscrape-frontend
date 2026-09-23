@@ -26,6 +26,10 @@ export interface QueueEntry {
   created_at: string
   started_at?: string | null
   sites: QueueSite[]
+  /** `verify` is a verification pass: no schools, progress in rows checked. */
+  kind?: 'crawl' | 'verify'
+  records_total?: number
+  records_checked?: number
 }
 
 export interface RunQueue {

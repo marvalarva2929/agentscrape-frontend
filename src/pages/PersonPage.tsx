@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
-import { peopleApi, pollVerification } from '../api/people'
+import { describeVerification, peopleApi, pollVerification, verificationIsDone } from '../api/people'
 import { SourceScreenshot } from '../components/source/SourceScreenshot'
 import type { SourceProvenance } from '../types/source'
 import type { Person, PersonVersion } from '../types/person'
@@ -42,22 +42,33 @@ export function PersonPage({
 
   const [verifying, setVerifying] = useState(false)
   const [verifyNotice, setVerifyNotice] = useState('')
+  // Stop following the job when this page closes or shows someone else.
+  const followingFor = useRef<string | null>(null)
+  useEffect(() => () => { followingFor.current = null }, [person.id])
 
   const verifyPerson = async () => {
+    const id = person.id
+    followingFor.current = id
+    const stale = () => followingFor.current !== id
     setVerifying(true); setVerifyNotice('')
     try {
-      const job = await peopleApi.startVerification({ recordIds: [person.id] })
-      const finished = await pollVerification(job.id)
+      const job = await peopleApi.startVerification({ recordIds: [id] })
+      setVerifyNotice(describeVerification(job))
+      const finished = await pollVerification(job.id, {
+        isCancelled: stale,
+        onUpdate: (update) => { if (!verificationIsDone(update)) setVerifyNotice(describeVerification(update)) },
+      })
+      if (!finished) return
       if (finished.status === 'failed') {
         setVerifyNotice(finished.error || 'Could not check this record. Please try again.')
       } else if (finished.recordsChecked === 0) {
-        setVerifyNotice('Could not re-read the source page for this record.')
+        setVerifyNotice(finished.error || 'Could not re-read the source page for this record.')
       } else {
         setVerifyNotice(finished.recordsCorrected > 0 ? 'Role label updated from the source page.' : 'Confirmed: the source page supports no other role.')
         onVerified?.()
       }
     } catch {
-      setVerifyNotice('Could not check this record. Please try again.')
+      if (!stale()) setVerifyNotice('Could not check this record. Please try again.')
     } finally {
       setVerifying(false)
     }

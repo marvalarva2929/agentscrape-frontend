@@ -216,6 +216,8 @@ interface VerificationJobResponse {
   status: 'pending' | 'running' | 'completed' | 'failed'
   site_id?: string | null
   record_ids?: string[] | null
+  run_id?: string | null
+  queue_position?: number | null
   records_total: number
   records_checked: number
   records_corrected: number
@@ -224,31 +226,75 @@ interface VerificationJobResponse {
 
 export interface VerificationJob {
   id: string
+  /** `pending` is waiting its turn in the run queue, like a crawl. */
   status: 'pending' | 'running' | 'completed' | 'failed'
+  /** The queue entry this pass waits in. */
+  runId?: string | null
+  /** 1 when it starts next; absent once it has started. */
+  queuePosition?: number | null
   recordsTotal: number
   recordsChecked: number
   recordsCorrected: number
+  /** Why it failed, or on a completed pass, why some rows were not checked. */
   error?: string | null
 }
 
 const toVerificationJob = (raw: VerificationJobResponse): VerificationJob => ({
-  id: raw.id, status: raw.status, recordsTotal: raw.records_total,
-  recordsChecked: raw.records_checked, recordsCorrected: raw.records_corrected,
-  error: raw.error ?? null,
+  id: raw.id, status: raw.status, runId: raw.run_id ?? null, queuePosition: raw.queue_position ?? null,
+  recordsTotal: raw.records_total, recordsChecked: raw.records_checked,
+  recordsCorrected: raw.records_corrected, error: raw.error ?? null,
 })
 
-/** Poll a verification job to completion, or give up after `timeoutMs`. */
+export const verificationIsDone = (job: VerificationJob) => job.status === 'completed' || job.status === 'failed'
+
+/**
+ * Follow a verification job until it finishes, calling `onUpdate` with every
+ * reply. It waits in the run queue behind any crawl, which can take a long
+ * time, so there is no time limit: stop following it with `isCancelled`
+ * (then this resolves to null). A few failed polls in a row end it with the error.
+ */
 export async function pollVerification(
   jobId: string,
-  { intervalMs = 1500, timeoutMs = 5 * 60 * 1000 }: { intervalMs?: number; timeoutMs?: number } = {},
-): Promise<VerificationJob> {
-  const startedAt = Date.now()
+  {
+    intervalMs = 3000,
+    onUpdate,
+    isCancelled = () => false,
+  }: { intervalMs?: number; onUpdate?: (job: VerificationJob) => void; isCancelled?: () => boolean } = {},
+): Promise<VerificationJob | null> {
+  let failures = 0
   for (;;) {
-    const job = await peopleApi.getVerificationStatus(jobId)
-    if (job.status === 'completed' || job.status === 'failed') return job
-    if (Date.now() - startedAt > timeoutMs) return job
+    if (isCancelled()) return null
+    try {
+      const job = await peopleApi.getVerificationStatus(jobId)
+      failures = 0
+      if (isCancelled()) return null
+      onUpdate?.(job)
+      if (verificationIsDone(job)) return job
+    } catch (error) {
+      failures += 1
+      if (failures >= 3) throw error
+    }
     await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
+}
+
+/** One line for where a verification pass is, in words for a person. */
+export function describeVerification(job: VerificationJob): string {
+  const rows = (n: number) => `${n.toLocaleString()} row${n === 1 ? '' : 's'}`
+  if (job.status === 'pending') {
+    if (job.queuePosition === 1) return 'Added to the queue — it runs next, once the crawl ahead of it finishes.'
+    if (job.queuePosition) return `Added to the queue — number ${job.queuePosition} in line. It runs when the work ahead of it finishes.`
+    return 'Added to the queue.'
+  }
+  if (job.status === 'running') {
+    return job.recordsTotal > 0
+      ? `Verifying… ${job.recordsChecked.toLocaleString()} of ${rows(job.recordsTotal)} checked so far.`
+      : 'Verifying…'
+  }
+  if (job.status === 'failed') return job.error || 'Verification failed. Please try again.'
+  const done = `Checked ${job.recordsChecked.toLocaleString()} of ${rows(job.recordsTotal)} against their source page — `
+    + `${job.recordsCorrected.toLocaleString()} label${job.recordsCorrected === 1 ? '' : 's'} corrected.`
+  return job.error ? `${done} ${job.error}` : done
 }
 
 export interface PeopleStats {

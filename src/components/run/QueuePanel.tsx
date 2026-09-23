@@ -50,7 +50,7 @@ export function QueuePanel({
     try {
       setQueue(await runsApi.moveRun(runId, direction))
     } catch {
-      setActionError('Could not move that school. It may have just started; the queue has been refreshed.')
+      setActionError('Could not move that item. It may have just started; the queue has been refreshed.')
       void refresh()
     } finally { setBusyId(null) }
   }
@@ -60,7 +60,7 @@ export function QueuePanel({
     try {
       await runsApi.cancelRun(runId)
     } catch {
-      setActionError('Could not remove that school from the queue.')
+      setActionError('Could not remove that item from the queue.')
     } finally {
       setBusyId(null)
       void refresh()
@@ -72,7 +72,7 @@ export function QueuePanel({
 
   const nothing = queue.running.length === 0 && queue.waiting.length === 0 && queue.stalled.length === 0
   if (nothing) {
-    return <div className="empty-state">No crawls are running.</div>
+    return <div className="empty-state">Nothing is running or waiting.</div>
   }
 
   const rowProps = { compact, onOpenRun, busyId, confirmId, setConfirmId, move, remove }
@@ -112,6 +112,9 @@ function QueueRow({
 }) {
   const name = entry.label || entry.sites.map((site) => site.domain).filter(Boolean).join(', ') || entry.run_id
   const people = entry.sites.reduce((total, site) => total + site.records_found, 0)
+  // A verification pass has no crawl monitor to open; its progress is rows checked.
+  const verify = entry.kind === 'verify'
+  const open = verify ? undefined : onOpenRun
   const busy = busyId === entry.run_id
   const confirming = confirmId === entry.run_id
 
@@ -122,13 +125,17 @@ function QueueRow({
       </div>
       <div className="queue-body">
         <div className="queue-title">
-          {onOpenRun
-            ? <button type="button" className="text-button queue-name" onClick={() => onOpenRun(entry.run_id)}>{name}</button>
+          {open
+            ? <button type="button" className="text-button queue-name" onClick={() => open(entry.run_id)}>{name}</button>
             : <strong>{name}</strong>}
           <span className={`status-badge ${state}`}>{STATE_LABELS[state]}</span>
         </div>
         <div className="queue-meta muted">
-          {Math.max(people, entry.records_found).toLocaleString()} people
+          {verify
+            ? <>Verification{state === 'running' && entry.records_total
+              ? ` · ${(entry.records_checked ?? 0).toLocaleString()} of ${entry.records_total.toLocaleString()} rows checked`
+              : ''}</>
+            : <>{Math.max(people, entry.records_found).toLocaleString()} people</>}
           {' · '}${entry.spend_usd.toFixed(2)}
           {entry.sites_total > 1 ? ` · ${entry.sites_completed}/${entry.sites_total} schools` : ''}
           {state === 'waiting' && entry.position === 1 ? ' · starts next' : ''}
