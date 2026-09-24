@@ -172,6 +172,19 @@ function QueueRow({
             )}
           </div>
         )}
+        {state === 'running' && verify && !compact && (
+          <div className="queue-actions">
+            {confirming ? (
+              <>
+                <span>Stop verification for “{name}”?</span>
+                <button className="secondary-button small-button" disabled={busy} onClick={() => void remove(entry.run_id)}>Yes, stop</button>
+                <button className="secondary-button small-button" onClick={() => setConfirmId(null)}>Keep running</button>
+              </>
+            ) : (
+              <button className="secondary-button small-button" disabled={busy} onClick={() => setConfirmId(entry.run_id)}>Stop verification</button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
