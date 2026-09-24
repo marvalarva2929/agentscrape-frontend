@@ -14,29 +14,40 @@ export function PastCrawlsPage({
   /** The crawl being watched: its stream-only figures show before the next history refresh. */
   activeRun?: Run | null
 }) {
+  const [query, setQuery] = useState('')
   const [runs, setRuns] = useState<Run[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [exporting, setExporting] = useState(false)
 
   const visibleRuns = useMemo(() => {
-    if (!activeRun) return runs
+    if (!activeRun || query.trim()) return runs
     const fromServer = runs.find((run) => run.id === activeRun.id)
     // The server's row is the settled truth for status, name and totals; what
     // the stream added on top (live figures) is kept, never the other way round.
     // A watched run that has not reached the history yet is shown as it is.
     const current = fromServer ? mergeRun(activeRun, fromServer) : activeRun
     return [current, ...runs.filter((run) => run.id !== activeRun.id)]
-  }, [activeRun, runs])
+  }, [activeRun, runs, query])
 
-  const load = async () => {
-    try { setRuns(await runsApi.listRuns()); setError('') } catch { setError('Could not load crawl history.') } finally { setLoading(false) }
-  }
   useEffect(() => {
-    void load()
+    let cancelled = false
+    setLoading(true)
+    setRuns([])
+    const load = async () => {
+      try {
+        const rows = await runsApi.listRuns(Infinity, query)
+        if (!cancelled) { setRuns(rows); setError('') }
+      } catch {
+        if (!cancelled) setError('Could not load crawl history.')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    const debounce = window.setTimeout(() => { void load() }, 250)
     const timer = window.setInterval(() => { if (document.visibilityState !== 'hidden') void load() }, 5000)
-    return () => window.clearInterval(timer)
-  }, [])
+    return () => { cancelled = true; window.clearTimeout(debounce); window.clearInterval(timer) }
+  }, [query])
 
   const exportRows = () => {
     setExporting(true)
@@ -61,9 +72,13 @@ export function PastCrawlsPage({
           <button className="secondary-button" onClick={onBack}>← Past data</button>
         </div>
       </div>
+      <div className="table-controls">
+        <input type="search" value={query} onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search crawl name, school, domain or run ID" aria-label="Search crawls" />
+      </div>
       {error && <div className="error-banner">{error}</div>}
       {loading && <div className="muted">Loading…</div>}
-      {!loading && !visibleRuns.length && !error && <div className="empty-state">Nothing has been crawled yet.</div>}
+      {!loading && !visibleRuns.length && !error && <div className="empty-state">{query.trim() ? 'No crawls match your search.' : 'Nothing has been crawled yet.'}</div>}
       {visibleRuns.length > 0 && (
         <div className="table-panel">
           <div className="table-wrap">

@@ -24,10 +24,9 @@ import type { Program } from './types/program'
 import type { Person, PersonStatus } from './types/person'
 import type { Run } from './types/run'
 import { downloadWorkbook } from './utils/excel'
+import { personRoles, roleLabel as roleOf } from './utils/personRoles'
 
 export type Screen = 'home' | 'data' | 'person' | 'run-monitor' | 'crawl' | 'history' | 'queue'
-
-const roleOf = (person: Person) => person.trainingType ?? (person.category ? person.category[0].toUpperCase() + person.category.slice(1) : 'Unknown')
 
 function App() {
   const [screen, setScreen] = useState<Screen>('home')
@@ -46,6 +45,7 @@ function App() {
   const [dataError, setDataError] = useState('')
   const [notice, setNotice] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [startingDirectory, setStartingDirectory] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [verifyNotice, setVerifyNotice] = useState('')
   // Only the most recent Verify click is followed; changing school stops it.
@@ -61,11 +61,11 @@ function App() {
 
   const selectedSchool = useMemo(() => schools.find((school) => school.id === selectedSchoolId) ?? null, [schools, selectedSchoolId])
   const selectedPerson = useMemo(() => people.find((person) => person.id === selectedPersonId) ?? null, [people, selectedPersonId])
-  const roles = useMemo(() => Array.from(new Set(people.map(roleOf))).sort(), [people])
+  const roles = useMemo(() => Array.from(new Set(people.flatMap(personRoles))).sort(), [people])
   const filteredPeople = useMemo(() => people.filter((person) => {
     const term = query.toLowerCase()
     return (!term || person.name.toLowerCase().includes(term) || (person.email ?? '').toLowerCase().includes(term))
-      && (roleFilter === 'all' || roleOf(person) === roleFilter)
+      && (roleFilter === 'all' || personRoles(person).includes(roleFilter))
       && (statusFilter === 'all' || person.status === statusFilter)
   }), [people, query, roleFilter, statusFilter])
 
@@ -334,13 +334,35 @@ function App() {
     }
   }
 
+  const searchDirectory = async () => {
+    if (!selectedSchool) return
+    setStartingDirectory(true)
+    setDataError('')
+    try {
+      const job = await runsApi.startRun({
+        schoolUrl: selectedSchool.canonicalUrl, schoolId: selectedSchool.id,
+        schoolName: selectedSchool.name, directoryOnly: true,
+        label: `Directory search — ${selectedSchool.name}`,
+      })
+      const current = { ...job, schoolId: selectedSchool.id, schoolName: selectedSchool.name, runType: 'Directory Search' as const }
+      setRun(current); rememberRun(current)
+      refreshQueue()
+      go('run-monitor', job.id)
+      watchRun(job.id)
+    } catch (caught) {
+      setDataError(caught instanceof Error ? caught.message : 'Could not start directory search. Please try again.')
+    } finally {
+      setStartingDirectory(false)
+    }
+  }
+
   const exportPeople = () => {
     setExporting(true)
     try {
       const program = selectedProgramId ? (programs.find((p) => p.id === selectedProgramId)?.name ?? 'program') : 'all-programs'
       downloadWorkbook('People', [
         { label: 'Name', value: (person: Person) => person.name }, { label: 'Role', value: (person: Person) => roleOf(person) },
-        { label: 'Position', value: (person: Person) => person.position }, { label: 'Year', value: (person: Person) => person.year },
+        { label: 'Position', value: (person: Person) => person.position }, { label: 'PGY', value: (person: Person) => person.year }, { label: 'Class year', value: (person: Person) => person.graduationYear },
         { label: 'Specialty', value: (person: Person) => person.specialty }, { label: 'Email', value: (person: Person) => person.email },
         { label: 'Status', value: (person: Person) => person.status }, { label: 'Last seen', value: (person: Person) => person.lastVerified },
       ], filteredPeople, `${safeFileName(`${selectedSchool?.name ?? 'school'}-${program}-people`)}.xlsx`)
@@ -432,8 +454,8 @@ function App() {
       {selectedSchoolId && selectedSchool && <>
         <div className="summary-row">
           <div className="summary-card"><div className="summary-label">People shown</div><div className="summary-value">{filteredPeople.length}</div></div>
-          <div className="summary-card"><div className="summary-label">Residents</div><div className="summary-value">{filteredPeople.filter((person) => person.trainingType === 'Resident').length}</div></div>
-          <div className="summary-card"><div className="summary-label">Fellows</div><div className="summary-value">{filteredPeople.filter((person) => person.trainingType === 'Fellow').length}</div></div>
+          <div className="summary-card"><div className="summary-label">Residents</div><div className="summary-value">{filteredPeople.filter((person) => personRoles(person).includes('Resident')).length}</div></div>
+          <div className="summary-card"><div className="summary-label">Fellows</div><div className="summary-value">{filteredPeople.filter((person) => personRoles(person).includes('Fellow')).length}</div></div>
         </div>
         <div className="table-panel">
           <div className="table-controls">
@@ -446,6 +468,9 @@ function App() {
               <option value="all">All statuses</option><option value="new">New</option><option value="active">Active</option><option value="changed">Changed</option><option value="stale">Stale</option>
             </select>
             <button className="secondary-button" onClick={exportPeople} disabled={exporting || filteredPeople.length === 0}>{exporting ? 'Preparing Excel…' : 'Download Excel'}</button>
+            <button className="secondary-button" onClick={() => { void searchDirectory() }} disabled={startingDirectory}>
+              {startingDirectory ? 'Queuing directory search…' : 'Directory search'}
+            </button>
             <button className="secondary-button" onClick={() => { void verifyPeople() }} disabled={verifying || filteredPeople.length === 0}>
               {verifying ? 'Adding to queue…' : `Verify ${filteredPeople.length} row${filteredPeople.length === 1 ? '' : 's'}`}
             </button>
@@ -457,9 +482,9 @@ function App() {
           )}
           {!peopleLoading && people.length > 0 && filteredPeople.length === 0 && <div className="empty-state">No one matches these filters.</div>}
           {filteredPeople.length > 0 && <div className="table-wrap"><table>
-            <thead><tr><th>Name</th><th>Role</th><th>Position</th><th>Year</th><th>Specialty</th><th>Email</th><th>Status</th><th>Last seen</th></tr></thead>
+            <thead><tr><th>Name</th><th>Role</th><th>Position</th><th>PGY</th><th>Class year</th><th>Specialty</th><th>Email</th><th>Status</th><th>Last seen</th></tr></thead>
             <tbody>{filteredPeople.map((person) => <tr key={person.id} className="clickable-row" onClick={() => { setSelectedPersonId(person.id); setScreen('person') }}>
-              <td>{person.name}</td><td>{roleOf(person)}</td><td>{person.position ?? '—'}</td><td>{person.year ?? '—'}</td><td>{person.specialty ?? '—'}</td><td>{person.email ?? '—'}</td>
+              <td>{person.name}</td><td>{roleOf(person)}</td><td>{person.position ?? '—'}</td><td>{person.year ?? '—'}</td><td>{person.graduationYear ?? '—'}</td><td>{person.specialty ?? '—'}</td><td>{person.email ?? '—'}</td>
               <td><span className={`status-badge ${person.status}`}>{person.status}</span></td><td>{formatDate(person.lastVerified)}</td>
             </tr>)}</tbody>
           </table></div>}

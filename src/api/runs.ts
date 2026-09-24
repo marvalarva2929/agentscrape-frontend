@@ -25,6 +25,7 @@ export interface StartRunRequest {
   /** The crawl's own name, as it appears in Past crawls. */
   label?: string
   includeDirectory?: boolean
+  directoryOnly?: boolean
 }
 
 interface RunResponse {
@@ -159,7 +160,7 @@ export const runsApi = {
           max_trainees: payload.maxTrainees ?? null,
           max_emails: payload.maxEmails ?? null,
           label: payload.label?.trim() || payload.schoolName || null,
-          modes: payload.includeDirectory ? ['crawl', 'directory'] : ['crawl'],
+          modes: payload.directoryOnly ? ['directory'] : payload.includeDirectory ? ['crawl', 'directory'] : ['crawl'],
           // Schools run one at a time: the model budget is one process-wide allowance.
           queued: true,
         },
@@ -175,11 +176,11 @@ export const runsApi = {
     return toRun(await apiFetch<RunResponse>(`/runs/${id}`))
   },
 
-  async listRuns(maxPages = 4): Promise<Run[]> {
+  async listRuns(maxPages = 4, query = ''): Promise<Run[]> {
     if (isMockMode()) {
-      return Object.values(mockRuns)
+      return Object.values(mockRuns).filter((run) => [run.id, run.label, run.schoolName].some((value) => value?.toLowerCase().includes(query.trim().toLowerCase())))
     }
-    const rows = await fetchAllPages<RunResponse>('/runs', { pageSize: 50, maxPages })
+    const rows = await fetchAllPages<RunResponse>(`/runs?q=${encodeURIComponent(query.trim())}`, { pageSize: 50, maxPages })
     return rows.map(toRun)
   },
 

@@ -37,6 +37,7 @@ export function RunMonitorPage({
   const [stopping, setStopping] = useState(false)
   const [confirmingStop, setConfirmingStop] = useState(false)
   const [stopError, setStopError] = useState('')
+  const operation = run.runType === 'Directory Search' ? 'Directory search' : 'Crawl'
   const finished = isFinished(run.status)
   const waiting = run.status === 'queued'
   const elapsed = useElapsed(run.startedAt, run.finishedAt, run.elapsedSeconds, finished || waiting)
@@ -99,8 +100,8 @@ export function RunMonitorPage({
   }
 
   const failedSites = siteRuns.filter((site) => site.status === 'failed' || site.status === 'rejected')
-  const emptySites = siteRuns.filter((site) => site.status === 'completed' && (site.records_found ?? 0) === 0 && site.error_code?.startsWith('NO_'))
-  const noPeople = finished && !run.errorMessage && failedSites.length === 0 && (run.counts?.peopleFound ?? 0) === 0
+  const emptySites = siteRuns.filter((site) => site.status === 'completed' && site.error_code?.startsWith('NO_'))
+  const noPeople = run.runType !== 'Directory Search' && finished && !run.errorMessage && failedSites.length === 0 && (run.counts?.peopleFound ?? 0) === 0
 
   return (
     <main className="page-shell">
@@ -152,9 +153,9 @@ export function RunMonitorPage({
       </div>
 
       {failedSites.map((site) => (
-        <div key={site.id} className="error-banner">
+        <div key={site.id} className="error-banner" role="alert">
           <span>
-            <strong>{site.hospital ?? site.domain ?? 'A school'}</strong> could not be crawled:{' '}
+            <strong>{site.hospital ?? site.domain ?? 'A school'}</strong> — {site.error_code?.startsWith('DIRECTORY_') ? 'directory search failed' : 'crawl failed'}:{' '}
             {site.error_message ?? 'no reason was recorded.'}
           </span>
           <button className="secondary-button small-button" disabled={retryingSiteId === site.site_id} onClick={() => void retrySite(site)}>
@@ -167,7 +168,7 @@ export function RunMonitorPage({
           <strong>{site.hospital ?? site.domain ?? 'A school'}</strong>: {site.error_message}
         </div>
       ))}
-      {run.status === 'failed' && run.errorMessage && failedSites.length === 0 && <div className="error-banner">The crawl failed: {run.errorMessage}</div>}
+      {run.status === 'failed' && run.errorMessage && failedSites.length === 0 && <div className="error-banner">{operation} failed: {run.errorMessage}</div>}
       {retryError && <div className="error-banner">{retryError}</div>}
       {stopError && <div className="error-banner">{stopError}</div>}
 
@@ -182,7 +183,7 @@ export function RunMonitorPage({
       {finished && (
         <div className="success-panel">
           <div className="success-header">
-            {run.status === 'failed' || run.errorMessage ? 'Crawl stopped early — results so far are saved' : 'Crawl complete'}
+            {run.status === 'failed' || run.errorMessage || failedSites.length > 0 ? `${operation} finished with errors — successful results are saved` : `${operation} complete`}
           </div>
           <div className="result-grid">
             <div><span>People found</span><strong>{run.counts?.peopleFound ?? 0}</strong></div>

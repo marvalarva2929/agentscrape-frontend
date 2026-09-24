@@ -6,14 +6,7 @@ import type { SourceProvenance } from '../types/source'
 import type { Person, PersonVersion } from '../types/person'
 import type { School } from '../types/school'
 
-/** A person can hold more than one role at once (faculty *and* a fellow);
- * once a verification job has confirmed that, show all of them. */
-const roleLabel = (person: Person) => {
-  if (person.roles && person.roles.length > 0) {
-    return person.roles.map((role) => role[0].toUpperCase() + role.slice(1)).join(', ')
-  }
-  return person.trainingType ?? person.category
-}
+import { roleLabel } from '../utils/personRoles'
 
 export function PersonPage({
   school,
@@ -35,9 +28,9 @@ export function PersonPage({
     ['Email', person.email],
     ['Role', roleLabel(person)],
     ['Position', person.position],
-    ['Year', person.year],
+    ['PGY', person.year],
     ['Specialty', person.specialty],
-    ['Class of', person.graduationYear],
+    ['Class year', person.graduationYear],
   ].filter(([, value]) => Boolean(value)) as Array<[string, string]>
 
   const [verifying, setVerifying] = useState(false)
