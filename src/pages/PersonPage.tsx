@@ -35,6 +35,7 @@ export function PersonPage({
 
   const [verifying, setVerifying] = useState(false)
   const [verifyNotice, setVerifyNotice] = useState('')
+  const [stoppedJobId, setStoppedJobId] = useState<string | null>(null)
   // Stop following the job when this page closes or shows someone else.
   const followingFor = useRef<string | null>(null)
   useEffect(() => () => { followingFor.current = null }, [person.id])
@@ -53,6 +54,7 @@ export function PersonPage({
       })
       if (!finished) return
       if (finished.status === 'failed') {
+        setStoppedJobId(finished.id)
         setVerifyNotice(finished.error || 'Could not check this record. Please try again.')
       } else if (finished.recordsChecked === 0) {
         setVerifyNotice(finished.error || 'Could not re-read the source page for this record.')
@@ -65,6 +67,21 @@ export function PersonPage({
     } finally {
       setVerifying(false)
     }
+  }
+
+  const resumeVerification = async () => {
+    if (!stoppedJobId) return
+    setVerifying(true)
+    try {
+      const job = await peopleApi.resumeVerification(stoppedJobId)
+      setStoppedJobId(null)
+      setVerifyNotice(describeVerification(job))
+      const finished = await pollVerification(job.id)
+      if (!finished) return
+      if (finished.status === 'failed') { setStoppedJobId(finished.id); setVerifyNotice(finished.error || 'Verification stopped.') }
+      else { setVerifyNotice(describeVerification(finished)); onVerified?.() }
+    } catch { setVerifyNotice('Could not resume verification. Please try again.') }
+    finally { setVerifying(false) }
   }
 
   const [source, setSource] = useState<SourceProvenance | null>(null)
@@ -111,6 +128,7 @@ export function PersonPage({
           <button className="secondary-button" onClick={() => { void verifyPerson() }} disabled={verifying}>
             {verifying ? 'Verifying…' : 'Verify against source'}
           </button>
+          {stoppedJobId ? <button className="secondary-button" onClick={() => { void resumeVerification() }} disabled={verifying}>Resume verification</button> : null}
           <button className="secondary-button" onClick={onBack}>Back to school</button>
         </div>
       </div>
@@ -128,6 +146,12 @@ export function PersonPage({
               <strong>{value}</strong>
             </div>
           ))}
+        </div>
+        <div className="detail-grid" style={{ marginTop: '1rem' }}>
+          <div className="detail-item"><span>Extraction confidence</span><strong>{formatConfidence(person.confidence)}</strong></div>
+          <div className="detail-item"><span>Verification</span><strong>{verificationLabel(person)}</strong></div>
+          {person.verificationEvidence ? <div className="detail-item"><span>Evidence</span><strong>{person.verificationEvidence}</strong></div> : null}
+          {person.verificationReason ? <div className="detail-item"><span>Verification note</span><strong>{person.verificationReason}</strong></div> : null}
         </div>
       </section>
 
@@ -198,6 +222,13 @@ function formatWhen(value?: string) {
   if (!value) return '—'
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString()
+}
+
+function formatConfidence(value?: number) { return value == null ? 'Not scored' : `${Math.round(value * 100)}%` }
+function verificationLabel(person: Person) {
+  const risk = person.verificationRisk ?? 'unverified'
+  const name = risk === 'verified' ? 'Verified' : risk === 'high' ? 'High risk — deeper check needed' : risk === 'needs_review' ? 'Needs review' : 'Unverified'
+  return `${name}${person.verificationConfidence == null ? '' : ` (${formatConfidence(person.verificationConfidence)})`}`
 }
 
 function StatusBadge({ status }: { status: Person['status'] }) {

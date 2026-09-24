@@ -482,9 +482,9 @@ function App() {
           )}
           {!peopleLoading && people.length > 0 && filteredPeople.length === 0 && <div className="empty-state">No one matches these filters.</div>}
           {filteredPeople.length > 0 && <div className="table-wrap"><table>
-            <thead><tr><th>Name</th><th>Role</th><th>Position</th><th>PGY</th><th>Class year</th><th>Specialty</th><th>Email</th><th>Status</th><th>Last seen</th></tr></thead>
+            <thead><tr><th>Name</th><th>Role</th><th>Verification</th><th>Position</th><th>PGY</th><th>Class year</th><th>Specialty</th><th>Email</th><th>Status</th><th>Last seen</th></tr></thead>
             <tbody>{filteredPeople.map((person) => <tr key={person.id} className="clickable-row" onClick={() => { setSelectedPersonId(person.id); setScreen('person') }}>
-              <td>{person.name}</td><td>{roleOf(person)}</td><td>{person.position ?? '—'}</td><td>{person.year ?? '—'}</td><td>{person.graduationYear ?? '—'}</td><td>{person.specialty ?? '—'}</td><td>{person.email ?? '—'}</td>
+              <td>{person.name}</td><td>{roleOf(person)}</td><td title={person.verificationReason}>{person.verificationRisk === 'verified' ? `Verified ${person.verificationConfidence == null ? '' : `${Math.round(person.verificationConfidence * 100)}%`}` : person.verificationRisk === 'high' ? 'High risk' : person.verificationRisk === 'needs_review' ? 'Needs review' : 'Unverified'}</td><td>{person.position ?? '—'}</td><td>{person.year ?? '—'}</td><td>{person.graduationYear ?? '—'}</td><td>{person.specialty ?? '—'}</td><td>{person.email ?? '—'}</td>
               <td><span className={`status-badge ${person.status}`}>{person.status}</span></td><td>{formatDate(person.lastVerified)}</td>
             </tr>)}</tbody>
           </table></div>}

@@ -24,6 +24,10 @@ interface PersonResponse {
   pgy_capture_date?: string | null
   status: string
   confidence: number
+  verification_confidence?: number | null
+  verification_risk?: string | null
+  verification_reason?: string | null
+  verification_evidence?: string | null
   version_count: number
   first_seen_at: string
   last_seen_at: string
@@ -88,6 +92,10 @@ const toPerson = (raw: PersonResponse): Person => ({
   capturedAt: raw.pgy_capture_date ?? raw.last_seen_at,
   sourceAvailable: raw.screenshot_available,
   confidence: raw.confidence,
+  verificationConfidence: raw.verification_confidence ?? undefined,
+  verificationRisk: raw.verification_risk ?? 'unverified',
+  verificationReason: raw.verification_reason ?? undefined,
+  verificationEvidence: raw.verification_evidence ?? undefined,
   isMissing: raw.status === 'missing',
   roles: raw.roles ?? undefined,
   rolesCheckedAt: raw.roles_checked_at ?? undefined,
@@ -208,6 +216,12 @@ export const peopleApi = {
       })
     }
     return toVerificationJob(await apiFetch<VerificationJobResponse>(`/people/verify/${jobId}`))
+  },
+
+  async resumeVerification(jobId: string): Promise<VerificationJob> {
+    return toVerificationJob(await apiFetch<VerificationJobResponse>('/people/verify/resume', {
+      method: 'POST', body: JSON.stringify({ job_id: jobId }),
+    }))
   },
 }
 

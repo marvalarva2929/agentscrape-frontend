@@ -51,6 +51,12 @@ export interface Person {
   extractedText?: string
   sourceAvailable?: boolean
   confidence?: number
+  /** Confidence from the stricter source-verification pass, not extraction. */
+  verificationConfidence?: number
+  /** verified | needs_review | high | unverified */
+  verificationRisk?: string
+  verificationReason?: string
+  verificationEvidence?: string
   versionHistory?: PersonVersion[]
   /** Every role a verification pass confirmed the source page supports for
    * this person, e.g. both "faculty" and "fellow". Undefined until a
