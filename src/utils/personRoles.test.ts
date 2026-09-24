@@ -8,10 +8,10 @@ describe('verified role display', () => {
   it('uses the correction instead of the original category and training type', () => {
     expect(roleLabel({ ...person, roles: ['fellow'] })).toBe('Fellow')
   })
-  it('keeps each confirmed role available to filters and counts', () => {
+  it('uses the single canonical category after verification', () => {
     const verified = { ...person, roles: ['faculty', 'fellow'] } as Person
-    expect(personRoles(verified)).toEqual(['Faculty', 'Fellow'])
-    expect(roleLabel(verified)).toBe('Faculty, Fellow')
+    expect(personRoles(verified)).toEqual(['Resident'])
+    expect(roleLabel(verified)).toBe('Resident')
   })
   it('keeps the original classification when nothing was confirmed', () => {
     expect(roleLabel(person)).toBe('Resident')
