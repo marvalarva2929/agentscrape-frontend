@@ -304,6 +304,7 @@ function App() {
           schoolId: request.schoolId, schoolUrl: request.schoolUrl, schoolName: request.schoolName, label: request.label,
           maxSpendUsd: request.maxSpendUsd, maxPeople: request.maxPeople, maxTrainees: request.maxTrainees, maxEmails: request.maxEmails,
           includeDirectory: request.includeDirectory,
+          priorityUrls: request.priorityUrls,
         })
         started.push({
           ...job, schoolId: request.schoolId || undefined, schoolName: request.schoolName, label: request.label,

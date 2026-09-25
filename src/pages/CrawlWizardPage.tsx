@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { priorityUrlsApi } from '../api/priorityUrls'
 import { QueuePanel } from '../components/run/QueuePanel'
 import { SchoolPicker } from '../components/schools/SchoolPicker'
 import type { School } from '../types/school'
@@ -15,6 +16,7 @@ export interface CrawlRequest {
   maxPeople: number | null
   maxTrainees: number | null
   maxEmails: number | null
+  priorityUrls: string[]
 }
 
 interface Picked {
@@ -70,6 +72,37 @@ export function CrawlWizardPage({
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [priorityUrls, setPriorityUrls] = useState<string[]>([])
+  const [sheetUrlInput, setSheetUrlInput] = useState('')
+  const [priorityBusy, setPriorityBusy] = useState(false)
+  const [priorityError, setPriorityError] = useState('')
+
+  const addPriorityUrls = (found: string[]) => {
+    setPriorityUrls((current) => Array.from(new Set([...current, ...found])))
+  }
+  const handleSpreadsheetUpload = async (file: File) => {
+    setPriorityBusy(true); setPriorityError('')
+    try {
+      addPriorityUrls(await priorityUrlsApi.uploadSpreadsheet(file))
+    } catch (caught) {
+      setPriorityError(caught instanceof Error && caught.message ? caught.message : 'Could not read that file.')
+    } finally {
+      setPriorityBusy(false)
+    }
+  }
+  const handleGoogleSheet = async () => {
+    const url = sheetUrlInput.trim()
+    if (!url) return
+    setPriorityBusy(true); setPriorityError('')
+    try {
+      addPriorityUrls(await priorityUrlsApi.fromGoogleSheet(url))
+      setSheetUrlInput('')
+    } catch (caught) {
+      setPriorityError(caught instanceof Error && caught.message ? caught.message : 'Could not read that Google Sheet.')
+    } finally {
+      setPriorityBusy(false)
+    }
+  }
 
   const directoryAvailable = picked.length > 0 && picked.every((school) => Boolean(school.directoryUrl))
   const label = queueBusy || picked.length > 1 ? 'Add to Queue' : 'Start Crawl'
@@ -106,7 +139,7 @@ export function CrawlWizardPage({
       setError('Limits must be whole numbers above zero, or left blank for no limit.'); return null
     }
     const now = new Date()
-    return picked.map((school) => ({
+    return picked.map((school, index) => ({
       schoolId: school.id,
       schoolUrl: school.url,
       schoolName: school.name,
@@ -114,6 +147,9 @@ export function CrawlWizardPage({
       label: picked.length === 1 && crawlName.trim() ? crawlName.trim() : defaultCrawlName(school.name, now),
       includeDirectory: includeDirectory && directoryAvailable,
       maxSpendUsd: budget, maxPeople, maxTrainees, maxEmails,
+      // Only meaningful for a single selected school - the upload section
+      // below is hidden once more than one is picked.
+      priorityUrls: index === 0 && picked.length === 1 ? priorityUrls : [],
     }))
   }
 
@@ -173,6 +209,60 @@ export function CrawlWizardPage({
           <div className="field-group">
             <label className="input-label" htmlFor="wizard-name">Crawl name</label>
             <input id="wizard-name" value={crawlName} onChange={(event) => setCrawlName(event.target.value)} placeholder={defaultCrawlName(picked[0].name)} />
+          </div>
+        )}
+        {picked.length === 1 && (
+          <div className="field-group">
+            <span className="input-label">Which links would you like to prioritize?</span>
+            <p className="muted">
+              Optional. Upload a spreadsheet of pages you would like AgentScrape to examine
+              first. After processing these links, AgentScrape will continue searching the
+              school's full website for additional programs and pages.
+            </p>
+            <div className="inline-field">
+              <input
+                id="wizard-priority-file"
+                type="file"
+                accept=".xlsx,.csv"
+                disabled={priorityBusy}
+                onChange={(event) => {
+                  const file = event.target.files?.[0]
+                  event.target.value = ''
+                  if (file) void handleSpreadsheetUpload(file)
+                }}
+              />
+            </div>
+            <div className="inline-field">
+              <input
+                id="wizard-priority-sheet"
+                value={sheetUrlInput}
+                disabled={priorityBusy}
+                onChange={(event) => setSheetUrlInput(event.target.value)}
+                onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void handleGoogleSheet() } }}
+                placeholder="Google Sheets URL (shared as “Anyone with the link”)"
+              />
+              <button type="button" className="secondary-button" disabled={priorityBusy} onClick={() => void handleGoogleSheet()}>
+                {priorityBusy ? 'Reading…' : 'Add'}
+              </button>
+            </div>
+            {priorityError && <div className="error-banner" role="alert">{priorityError}</div>}
+            {priorityUrls.length > 0 && (
+              <ol className="picked-list" aria-label="Priority links, in the order they will be examined first">
+                {priorityUrls.map((url) => (
+                  <li key={url}>
+                    <span className="picked-name" title={url}>{url}</span>
+                    <button
+                      type="button"
+                      className="text-button"
+                      aria-label={`Remove ${url}`}
+                      onClick={() => setPriorityUrls((current) => current.filter((item) => item !== url))}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ol>
+            )}
           </div>
         )}
         {directoryAvailable && (

@@ -25,6 +25,9 @@ export interface StartRunRequest {
   /** The crawl's own name, as it appears in Past crawls. */
   label?: string
   includeDirectory?: boolean
+  /** Links to examine first, from an uploaded spreadsheet or Google Sheet.
+   * A hint, not a boundary: normal site-wide discovery still runs after. */
+  priorityUrls?: string[]
 }
 
 interface RunResponse {
@@ -162,6 +165,11 @@ export const runsApi = {
           modes: payload.includeDirectory ? ['crawl', 'directory'] : ['crawl'],
           // Schools run one at a time: the model budget is one process-wide allowance.
           queued: true,
+          // Keyed by the same string as `sites` above, so the backend can
+          // scope these links to this one school even in a multi-site run.
+          priority_urls: payload.schoolUrl && payload.priorityUrls?.length
+            ? { [payload.schoolUrl]: payload.priorityUrls }
+            : undefined,
         },
       }),
     })
