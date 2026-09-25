@@ -379,9 +379,8 @@ function App() {
   }
 
   /**
-   * Queues a re-check against stored source pages. A school-wide request is
-   * deliberately independent of the table filters, so users can verify the
-   * complete school rather than only the rows currently visible.
+   * Queues a re-check of the selected table rows against their stored source
+   * pages. It never expands the request to every record at the school.
    */
   const verifyPeople = async (scope: { siteId?: string; recordIds?: string[] }, label: string) => {
     if (!scope.siteId && !scope.recordIds?.length) return
@@ -471,11 +470,8 @@ function App() {
             <button className="secondary-button" onClick={() => { void searchDirectory() }} disabled={startingDirectory}>
               {startingDirectory ? 'Queuing directory search…' : 'Directory search'}
             </button>
-            <button className="secondary-button" onClick={() => { void verifyPeople({ siteId: selectedSchoolId }, 'this school') }} disabled={verifying || people.length === 0}>
-              {verifying ? 'Adding to queue…' : 'Verify school'}
-            </button>
             <button className="secondary-button" onClick={() => { void verifyPeople({ recordIds: filteredPeople.map((person) => person.id) }, 'these rows') }} disabled={verifying || filteredPeople.length === 0}>
-              {verifying ? 'Adding to queue…' : `Verify ${filteredPeople.length} row${filteredPeople.length === 1 ? '' : 's'}`}
+              {verifying ? 'Adding to queue…' : `Verify selected people (${filteredPeople.length})`}
             </button>
           </div>
           {verifyNotice && <div className="info-banner">{verifyNotice}</div>}
