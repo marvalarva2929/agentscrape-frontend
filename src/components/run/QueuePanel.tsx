@@ -112,9 +112,10 @@ function QueueRow({
 }) {
   const name = entry.label || entry.sites.map((site) => site.domain).filter(Boolean).join(', ') || entry.run_id
   const people = entry.sites.reduce((total, site) => total + site.records_found, 0)
-  // A verification pass has no crawl monitor to open; its progress is rows checked.
+  // Verification passes use the same run stream as crawls and are therefore
+  // openable from the queue for live status and activity.
   const verify = entry.kind === 'verify'
-  const open = verify ? undefined : onOpenRun
+  const open = onOpenRun
   const busy = busyId === entry.run_id
   const confirming = confirmId === entry.run_id
 
