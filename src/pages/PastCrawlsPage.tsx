@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { mergeRun, runStatusLabel, runsApi } from '../api/runs'
+import { peopleApi } from '../api/people'
 import type { Run } from '../types/run'
 import { crawlName } from '../utils/crawlName'
 import { downloadWorkbook } from '../utils/excel'
@@ -19,6 +20,7 @@ export function PastCrawlsPage({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [retryingVerificationId, setRetryingVerificationId] = useState<string | null>(null)
 
   const visibleRuns = useMemo(() => {
     if (!activeRun || query.trim()) return runs
@@ -63,6 +65,20 @@ export function PastCrawlsPage({
     } catch { setError('Could not create the Excel workbook. Please try again.') } finally { setExporting(false) }
   }
 
+  const retryVerification = async (run: Run) => {
+    if (!run.verificationJobId) return
+    setRetryingVerificationId(run.verificationJobId)
+    try {
+      const job = await peopleApi.resumeVerification(run.verificationJobId)
+      if (job.runId) onOpenRun(job.runId)
+      else setError('Verification was queued, but its run could not be opened.')
+    } catch {
+      setError('Could not retry this verification. It may already be fully verified.')
+    } finally {
+      setRetryingVerificationId(null)
+    }
+  }
+
   return (
     <main className="page-shell">
       <div className="page-header-row">
@@ -84,7 +100,7 @@ export function PastCrawlsPage({
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>Name</th><th>Started</th><th>Completed</th><th>Operation</th><th>Status</th><th>People found</th><th>New</th><th>Changed</th><th>Missing</th><th>Spend</th><th>Duration</th></tr>
+                <tr><th>Name</th><th>Started</th><th>Completed</th><th>Operation</th><th>Status</th><th>People found</th><th>New</th><th>Changed</th><th>Missing</th><th>Spend</th><th>Duration</th><th>Action</th></tr>
               </thead>
               <tbody>
                 {visibleRuns.map((run) => (
@@ -103,6 +119,14 @@ export function PastCrawlsPage({
                     <td>{run.counts?.missingCount ?? 0}</td>
                     <td>{run.spendUsd == null ? '—' : `$${run.spendUsd.toFixed(2)}`}</td>
                     <td>{formatDuration(run.elapsedSeconds ?? 0)}</td>
+                    <td>
+                      {run.verificationJobId ? (
+                        <button className="secondary-button small-button" disabled={retryingVerificationId === run.verificationJobId}
+                          onClick={(event) => { event.stopPropagation(); void retryVerification(run) }}>
+                          {retryingVerificationId === run.verificationJobId ? 'Queuing…' : 'Retry unverified'}
+                        </button>
+                      ) : '—'}
+                    </td>
                   </tr>
                 ))}
               </tbody>

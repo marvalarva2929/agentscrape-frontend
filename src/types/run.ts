@@ -51,7 +51,9 @@ export interface Run {
   peopleEnriched?: number
   emailsFound?: number
   warnings?: number
-  runType?: 'Directory Search' | 'New Crawl' | 'New Crawl + Directory Search'
+  runType?: 'Directory Search' | 'New Crawl' | 'New Crawl + Directory Search' | 'Verification'
+  /** Present on a verification history entry; retries only unresolved rows. */
+  verificationJobId?: string
   /** Who is working on what, from the heartbeat and the step events. */
   agents?: AgentInfo[]
   tokensIn?: number

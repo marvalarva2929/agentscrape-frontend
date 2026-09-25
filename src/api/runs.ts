@@ -33,6 +33,7 @@ export interface StartRunRequest {
 
 interface RunResponse {
   id: string
+  kind?: 'crawl' | 'verify'
   status: string
   stop_reason?: string | null
   label?: string | null
@@ -60,6 +61,7 @@ interface RunResponse {
   error_message?: string | null
   queued?: boolean
   queue_position?: number | null
+  verification_job_id?: string | null
 }
 
 const elapsed = (startedAt?: string | null, finishedAt?: string | null): number => {
@@ -68,7 +70,8 @@ const elapsed = (startedAt?: string | null, finishedAt?: string | null): number 
   return Math.max(0, Math.round((end - Date.parse(startedAt)) / 1000))
 }
 
-const toRunType = (modes?: string[]): Run['runType'] => {
+const toRunType = (kind?: string, modes?: string[]): Run['runType'] => {
+  if (kind === 'verify') return 'Verification'
   if (modes?.includes('directory') && modes.includes('crawl')) return 'New Crawl + Directory Search'
   if (modes?.includes('directory')) return 'Directory Search'
   return 'New Crawl'
@@ -80,7 +83,8 @@ export const toRun = (raw: RunResponse): Run => ({
   label: raw.label ?? undefined,
   // The school, not the crawl's name: the name is `label`.
   schoolName: raw.school_name ?? undefined,
-  runType: toRunType(raw.config?.modes),
+  runType: toRunType(raw.kind, raw.config?.modes),
+  verificationJobId: raw.verification_job_id ?? undefined,
   startedAt: raw.started_at ?? undefined,
   finishedAt: raw.finished_at ?? undefined,
   elapsedSeconds: elapsed(raw.started_at, raw.finished_at),
