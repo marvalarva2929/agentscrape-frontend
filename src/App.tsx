@@ -379,18 +379,17 @@ function App() {
   }
 
   /**
-   * Queues a re-check of the rows currently shown against their stored source
-   * page, confirming every role each person's page actually supports (someone
-   * can be both faculty and a fellow, but the crawl stores only one). It waits
-   * its turn in the run queue like a crawl; the notice follows it from there.
+   * Queues a re-check against stored source pages. A school-wide request is
+   * deliberately independent of the table filters, so users can verify the
+   * complete school rather than only the rows currently visible.
    */
-  const verifyPeople = async () => {
-    if (filteredPeople.length === 0) return
+  const verifyPeople = async (scope: { siteId?: string; recordIds?: string[] }, label: string) => {
+    if (!scope.siteId && !scope.recordIds?.length) return
     const ticket = ++verifyTicket.current
     const stale = () => verifyTicket.current !== ticket
     setVerifying(true); setVerifyNotice(''); setDataError('')
     try {
-      const job = await peopleApi.startVerification({ recordIds: filteredPeople.map((person) => person.id) })
+      const job = await peopleApi.startVerification(scope)
       setVerifyNotice(describeVerification(job))
       refreshQueue()
       setVerifying(false)
@@ -405,7 +404,7 @@ function App() {
         await refreshPeople()
       }
     } catch {
-      if (!stale()) setDataError('Could not verify these records. Please try again.')
+      if (!stale()) setDataError(`Could not verify ${label}. Please try again.`)
     } finally {
       if (!stale()) setVerifying(false)
     }
@@ -472,7 +471,10 @@ function App() {
             <button className="secondary-button" onClick={() => { void searchDirectory() }} disabled={startingDirectory}>
               {startingDirectory ? 'Queuing directory search…' : 'Directory search'}
             </button>
-            <button className="secondary-button" onClick={() => { void verifyPeople() }} disabled={verifying || filteredPeople.length === 0}>
+            <button className="secondary-button" onClick={() => { void verifyPeople({ siteId: selectedSchoolId }, 'this school') }} disabled={verifying || people.length === 0}>
+              {verifying ? 'Adding to queue…' : 'Verify school'}
+            </button>
+            <button className="secondary-button" onClick={() => { void verifyPeople({ recordIds: filteredPeople.map((person) => person.id) }, 'these rows') }} disabled={verifying || filteredPeople.length === 0}>
               {verifying ? 'Adding to queue…' : `Verify ${filteredPeople.length} row${filteredPeople.length === 1 ? '' : 's'}`}
             </button>
           </div>
